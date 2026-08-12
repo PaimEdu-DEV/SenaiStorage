@@ -1,0 +1,13 @@
+.app {
+  min-height: 100vh;
+  background-color: #f8f8f8;
+  padding: 40px;
+}
+
+.app h1 {
+  color: #f47b20;
+}
+
+.app p {
+  color: #666;
+}
