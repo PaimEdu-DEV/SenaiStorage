@@ -20,14 +20,17 @@ function verificarFirebase() {
 
 function criarIdSimplesProduto(produto) {
   const textoBase = produto.nome || produto.codigo;
+  const sufixoEstoque = produto.tipoEstoque === "pequeno" ? "-pequeno" : "";
 
-  return textoBase
+  const idBase = textoBase
     .trim()
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+
+  return `${idBase}${sufixoEstoque}`;
 }
 
 export function cadastrarProduto(produto) {
@@ -137,10 +140,13 @@ export function excluirLinkAcesso(token) {
 export function cadastrarMovimentacao(movimentacao) {
   verificarFirebase();
   const historicoRef = doc(collection(db, "historicoMovimentacoes"));
+  const criadoEm = Date.now();
 
   return setDoc(historicoRef, {
+    usuario: "Sistema",
     ...movimentacao,
-    criadoEm: Date.now(),
+    criadoEm,
+    data: new Date(criadoEm).toISOString(),
   });
 }
 
