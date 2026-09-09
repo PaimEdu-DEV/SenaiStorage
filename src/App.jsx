@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Clock,
   Container,
   Filter,
   FlaskConical,
@@ -30,6 +31,7 @@ import {
 import "./App.css";
 import {
   atualizarProduto,
+  atualizarMovimentacao,
   buscarLinkAcesso,
   cadastrarMovimentacao,
   cadastrarLinkAcesso,
@@ -38,10 +40,12 @@ import {
   excluirProduto,
   excluirLinkAcesso,
   excluirProdutoFinal,
+  listarConfiguracoesSistema,
   listarLinksAcesso,
   listarMovimentacoes,
   listarProdutos,
   listarProdutosFinais,
+  salvarConfiguracoesSistema,
 } from "./crud";
 import { firebaseConfigurado } from "./firebaseconfig";
 import senaiLogo from "./assets/senai-logo.png";
@@ -118,6 +122,11 @@ const formularioLinkInicial = {
 const produtoFinalInicial = {
   nome: "",
   foto: "",
+  fotoNome: "",
+  fotoTamanhoKb: "",
+};
+const configuracoesSistemaInicial = {
+  horarioJustificativa: "17:00",
 };
 const registroUsoInicial = {
   produtoId: "",
@@ -183,6 +192,57 @@ function calcularDuracaoEmMs(valor, unidade) {
 
 function formatarData(timestamp) {
   return new Date(timestamp).toLocaleString("pt-BR");
+}
+
+function converterImagemParaWebp(arquivo, larguraMaxima = 800, qualidade = 0.78) {
+  return new Promise((resolve, reject) => {
+    const imagem = new Image();
+    const urlTemporaria = URL.createObjectURL(arquivo);
+
+    imagem.onload = () => {
+      const proporcao = Math.min(1, larguraMaxima / imagem.width);
+      const largura = Math.round(imagem.width * proporcao);
+      const altura = Math.round(imagem.height * proporcao);
+      const canvas = document.createElement("canvas");
+      const contexto = canvas.getContext("2d");
+
+      canvas.width = largura;
+      canvas.height = altura;
+      contexto.drawImage(imagem, 0, 0, largura, altura);
+
+      const imagemWebp = canvas.toDataURL("image/webp", qualidade);
+      const tamanhoKb = Math.round((imagemWebp.length * 3) / 4 / 1024);
+
+      URL.revokeObjectURL(urlTemporaria);
+      resolve({
+        imagemWebp,
+        tamanhoKb,
+        nome: arquivo.name.replace(/\.[^.]+$/, ".webp"),
+      });
+    };
+
+    imagem.onerror = () => {
+      URL.revokeObjectURL(urlTemporaria);
+      reject(new Error("Nao foi possivel converter a imagem para WebP."));
+    };
+
+    imagem.src = urlTemporaria;
+  });
+}
+
+function horarioJustificativaEstaAtivo(horarioJustificativa, dataAtual) {
+  const [hora, minuto] = String(horarioJustificativa || "17:00")
+    .split(":")
+    .map(Number);
+
+  if (Number.isNaN(hora) || Number.isNaN(minuto)) {
+    return false;
+  }
+
+  const minutosConfigurados = hora * 60 + minuto;
+  const minutosAtuais = dataAtual.getHours() * 60 + dataAtual.getMinutes();
+
+  return minutosAtuais >= minutosConfigurados;
 }
 
 function obterUnidadeProduto(produto) {
@@ -252,13 +312,23 @@ function App() {
   });
   const [introJaVista, setIntroJaVista] = useState(false);
   const [mostrarTelaInicial, setMostrarTelaInicial] = useState(false);
-  const [menuLateralAberto, setMenuLateralAberto] = useState(true);
+  const [menuLateralAberto, setMenuLateralAberto] = useState(
+    () => window.matchMedia("(min-width: 761px)").matches,
+  );
   const [perfilSistema, setPerfilSistema] = useState(perfilAdmin);
   const [produtosFinais, setProdutosFinais] = useState([]);
   const [formProdutoFinal, setFormProdutoFinal] = useState(produtoFinalInicial);
+  const [configuracoesSistema, setConfiguracoesSistema] = useState(
+    configuracoesSistemaInicial,
+  );
+  const [erroConfiguracoesSistema, setErroConfiguracoesSistema] = useState("");
   const [modalRegistroUsoAberto, setModalRegistroUsoAberto] = useState(false);
+  const [modalJustificativasAberto, setModalJustificativasAberto] =
+    useState(false);
   const [registroUso, setRegistroUso] = useState(registroUsoInicial);
+  const [justificativasPendentes, setJustificativasPendentes] = useState({});
   const [erroRegistroUso, setErroRegistroUso] = useState("");
+  const [erroJustificativaPendente, setErroJustificativaPendente] = useState("");
   const [modalUsoAberto, setModalUsoAberto] = useState(false);
   const [modalFichaAberto, setModalFichaAberto] = useState(false);
   const [modalEstoquePequenoAberto, setModalEstoquePequenoAberto] = useState(false);
@@ -300,6 +370,7 @@ function App() {
     link: null,
     erro: "",
   });
+  const [agora, setAgora] = useState(new Date());
   const tokenAcesso = new URLSearchParams(window.location.search).get("acesso");
   const usuarioAdmin = perfilSistema === perfilAdmin;
 
@@ -453,6 +524,32 @@ function App() {
     );
 
     return () => pararDeOuvirProdutosFinais();
+  }, []);
+
+  useEffect(() => {
+    const pararDeOuvirConfiguracoes = listarConfiguracoesSistema(
+      (configuracoes) => {
+        setConfiguracoesSistema({
+          ...configuracoesSistemaInicial,
+          ...configuracoes,
+        });
+      },
+      (error) => {
+        setErroConfiguracoesSistema(
+          `Erro ao carregar configuracoes: ${error.message}`,
+        );
+      },
+    );
+
+    return () => pararDeOuvirConfiguracoes();
+  }, []);
+
+  useEffect(() => {
+    const intervalo = setInterval(() => {
+      setAgora(new Date());
+    }, 30000);
+
+    return () => clearInterval(intervalo);
   }, []);
 
   useEffect(() => {
@@ -715,7 +812,9 @@ function App() {
   }
 
   function trocarAba(id) {
-    if (!usuarioAdmin && id === "admin") {
+    const abasRestritasAluno = ["admin", "principal", "movimentacoes"];
+
+    if (!usuarioAdmin && abasRestritasAluno.includes(id)) {
       setAbaAtiva("painel");
       rolarParaTopo();
       return;
@@ -728,7 +827,10 @@ function App() {
   function trocarPerfilSistema(novoPerfil) {
     setPerfilSistema(novoPerfil);
 
-    if (novoPerfil === perfilAluno && abaAtiva === "admin") {
+    if (
+      novoPerfil === perfilAluno &&
+      ["admin", "principal", "movimentacoes"].includes(abaAtiva)
+    ) {
       setProdutoEditandoId(null);
       setFormulario(formularioInicial);
       setAbaAtiva("painel");
@@ -867,23 +969,43 @@ function App() {
     });
   }
 
-  function atualizarFotoProdutoFinal(event) {
+  function atualizarCampoConfiguracoesSistema(event) {
+    const { name, value } = event.target;
+
+    setConfiguracoesSistema({
+      ...configuracoesSistema,
+      [name]: value,
+    });
+  }
+
+  function atualizarJustificativaPendente(id, valor) {
+    setJustificativasPendentes({
+      ...justificativasPendentes,
+      [id]: valor,
+    });
+  }
+
+  async function atualizarFotoProdutoFinal(event) {
     const arquivo = event.target.files?.[0];
 
     if (!arquivo) {
       return;
     }
 
-    const leitor = new FileReader();
+    setErroProdutoFinal("");
 
-    leitor.onload = () => {
+    try {
+      const fotoConvertida = await converterImagemParaWebp(arquivo);
+
       setFormProdutoFinal({
         ...formProdutoFinal,
-        foto: leitor.result,
+        foto: fotoConvertida.imagemWebp,
+        fotoNome: fotoConvertida.nome,
+        fotoTamanhoKb: fotoConvertida.tamanhoKb,
       });
-    };
-
-    leitor.readAsDataURL(arquivo);
+    } catch (error) {
+      setErroProdutoFinal(error.message);
+    }
   }
 
   function atualizarDevolucaoEstoquePequeno(id, valor) {
@@ -913,6 +1035,8 @@ function App() {
       id: crypto.randomUUID(),
       nome: formProdutoFinal.nome.trim(),
       foto: formProdutoFinal.foto,
+      fotoNome: formProdutoFinal.fotoNome,
+      fotoTamanhoKb: formProdutoFinal.fotoTamanhoKb,
       criadoEm: Date.now(),
     };
 
@@ -931,6 +1055,46 @@ function App() {
       await excluirProdutoFinal(id);
     } catch (error) {
       setErroProdutoFinal(error.message);
+    }
+  }
+
+  async function salvarConfiguracoesAdministrativas(event) {
+    event.preventDefault();
+    setErroConfiguracoesSistema("");
+
+    try {
+      await salvarConfiguracoesSistema(configuracoesSistema);
+    } catch (error) {
+      setErroConfiguracoesSistema(error.message);
+    }
+  }
+
+  async function enviarJustificativaPendente(movimentacao) {
+    const textoJustificativa = String(
+      justificativasPendentes[movimentacao.id] || "",
+    ).trim();
+
+    setErroJustificativaPendente("");
+
+    if (!textoJustificativa) {
+      setErroJustificativaPendente("Escreva a justificativa antes de enviar.");
+      return;
+    }
+
+    try {
+      await atualizarMovimentacao(movimentacao.id, {
+        tipo: "pendencia-justificada",
+        titulo: "Pendencia de uso justificada",
+        justificativa: textoJustificativa,
+        justificativaEnviadaEm: Date.now(),
+      });
+
+      setJustificativasPendentes({
+        ...justificativasPendentes,
+        [movimentacao.id]: "",
+      });
+    } catch (error) {
+      setErroJustificativaPendente(error.message);
     }
   }
 
@@ -984,7 +1148,11 @@ function App() {
       return;
     }
 
-    if (registroUsoPrecisaJustificativa && !registroUso.justificativa.trim()) {
+    if (
+      registroUsoPrecisaJustificativa &&
+      horarioJustificativaAtivo &&
+      !registroUso.justificativa.trim()
+    ) {
       setErroRegistroUso("A conta nao fechou. Escreva uma justificativa.");
       return;
     }
@@ -1000,8 +1168,11 @@ function App() {
         normalizarCodigo(produtoPrincipal.codigo) ===
         normalizarCodigo(produtoRegistroUso.codigo),
     );
+    const justificativaInformada = registroUso.justificativa.trim();
     const tipoMovimentacao = registroUsoPrecisaJustificativa
-      ? "pendencia-uso"
+      ? justificativaInformada
+        ? "pendencia-justificada"
+        : "pendencia-uso"
       : "uso-aula";
 
     try {
@@ -1030,9 +1201,12 @@ function App() {
 
       await cadastrarMovimentacao({
         tipo: tipoMovimentacao,
-        titulo: registroUsoPrecisaJustificativa
-          ? "Pendencia de uso em aula"
-          : "Uso de material em aula",
+        titulo:
+          tipoMovimentacao === "pendencia-uso"
+            ? "Pendencia de uso em aula"
+            : tipoMovimentacao === "pendencia-justificada"
+              ? "Uso de aula justificado"
+              : "Uso de material em aula",
         produto: produtoRegistroUso,
         quantidadeKg: quantidadeRegistroRetirada,
         origem: "Estoque Pequeno",
@@ -1050,7 +1224,11 @@ function App() {
           perda: quantidadePerda,
           diferenca: diferencaRegistroUso,
         },
-        justificativa: registroUso.justificativa.trim(),
+        horarioJustificativa:
+          configuracoesSistema.horarioJustificativa ||
+          configuracoesSistemaInicial.horarioJustificativa,
+        precisaJustificativa: registroUsoPrecisaJustificativa,
+        justificativa: justificativaInformada,
         descricao:
           `${registroUso.aluno.trim()} registrou ${quantidadeRegistroRetirada} ` +
           `${obterUnidadeProduto(produtoRegistroUso)} de ${produtoRegistroUso.nome}.`,
@@ -1471,6 +1649,7 @@ function App() {
     setModalAcessoAberto(false);
     setModalHistoricoAberto(false);
     setModalEntradaAberto(false);
+    setModalJustificativasAberto(false);
     setModalTodosProdutosAberto(false);
     setMostrarTelaInicial(true);
   }
@@ -1495,7 +1674,7 @@ function App() {
       titulo: "Principal",
       descricao: "Pavilhao e estoque grande.",
       icone: Warehouse,
-      somenteAdmin: false,
+      somenteAdmin: true,
     },
     {
       id: "pequeno",
@@ -1509,7 +1688,7 @@ function App() {
       titulo: "Movimentacoes",
       descricao: "Historico de tudo que aconteceu.",
       icone: ClipboardList,
-      somenteAdmin: false,
+      somenteAdmin: true,
     },
     {
       id: "admin",
@@ -1529,12 +1708,20 @@ function App() {
   const pendenciasUsoAula = movimentacoes.filter(
     (movimentacao) => movimentacao.tipo === "pendencia-uso",
   );
+  const horarioJustificativaAtivo = horarioJustificativaEstaAtivo(
+    configuracoesSistema.horarioJustificativa,
+    agora,
+  );
+  const pendenciasJustificativaVisiveis = horarioJustificativaAtivo
+    ? pendenciasUsoAula
+    : [];
   const graficosPainel = [
     {
       titulo: "Estoque Principal",
       descricao: "Materiais no pavilhao",
       icone: Warehouse,
       destino: "principal",
+      somenteAdmin: true,
       totais: totaisEstoquePrincipal,
       porcentagem: calcularPorcentagemGrafico(
         totaisEstoquePrincipal.totalVisual,
@@ -1546,6 +1733,7 @@ function App() {
       descricao: "Materiais nos baldes",
       icone: Boxes,
       destino: "pequeno",
+      somenteAdmin: false,
       totais: totaisEstoquePequeno,
       porcentagem: calcularPorcentagemGrafico(
         totaisEstoquePequeno.totalVisual,
@@ -1557,6 +1745,7 @@ function App() {
       descricao: "Area preparada",
       icone: Container,
       destino: "painel",
+      somenteAdmin: false,
       totais: totaisMoinho,
       porcentagem: calcularPorcentagemGrafico(
         totaisMoinho.totalVisual,
@@ -1815,6 +2004,7 @@ function App() {
             </div>
 
             <nav className="side-nav" aria-label="Menu principal">
+              <span className="nav-section-label">Gestão de materiais</span>
               {abasVisiveis.map((aba) => {
                 const IconeAba = aba.icone;
 
@@ -1827,6 +2017,7 @@ function App() {
                     key={aba.id}
                     onClick={() => trocarAba(aba.id)}
                     title={aba.titulo}
+                    aria-current={abaAtiva === aba.id ? "page" : undefined}
                   >
                     <IconeAba size={20} />
                     <span className="side-nav-copy">
@@ -1868,6 +2059,8 @@ function App() {
                 type="button"
                 className="btn-secondary"
                 onClick={alternarTema}
+                aria-label={modoEscuro ? "Ativar modo claro" : "Ativar modo escuro"}
+                title={modoEscuro ? "Ativar modo claro" : "Ativar modo escuro"}
               >
                 {modoEscuro ? <Sun size={18} /> : <Moon size={18} />}
                 <span>{modoEscuro ? "Modo claro" : "Modo escuro"}</span>
@@ -1887,16 +2080,6 @@ function App() {
                   {usuarioAdmin ? <ShieldCheck size={16} /> : <GraduationCap size={16} />}
                   {usuarioAdmin ? "Professor" : "Aluno"}
                 </span>
-
-                <button
-                  type="button"
-                  className="utility-button"
-                  onClick={alternarTema}
-                  aria-label={modoEscuro ? "Ativar modo claro" : "Ativar modo escuro"}
-                  title={modoEscuro ? "Ativar modo claro" : "Ativar modo escuro"}
-                >
-                  {modoEscuro ? <Sun size={20} /> : <Moon size={20} />}
-                </button>
               </div>
             </header>
 
@@ -1911,92 +2094,119 @@ function App() {
               <section className="panel-page">
                 <div className="panel-hero">
                   <div>
-                    <span>Painel</span>
-                    <h2>Resumo do estoque</h2>
+                    <span>Visão operacional</span>
+                    <h2>Visão geral do estoque</h2>
+                    <p>Materiais, disponibilidade e atividade.</p>
                   </div>
-
-                  {usuarioAdmin && (
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={abrirEntradaProduto}
-                    >
-                      <PackagePlus size={18} />
-                      Nova entrada
-                    </button>
-                  )}
+                  <time className="panel-date" dateTime={agora.toISOString()}>
+                    <Clock size={15} />
+                    {agora.toLocaleDateString("pt-BR", {
+                      day: "2-digit",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </time>
                 </div>
 
-                {usuarioAdmin && pendenciasUsoAula.length > 0 && (
-                  <div className="admin-alert">
+                {pendenciasUsoAula.length > 0 && (
+                  <div
+                    className={
+                      horarioJustificativaAtivo
+                        ? "admin-alert"
+                        : "admin-alert waiting"
+                    }
+                  >
                     <AlertTriangle size={28} />
                     <div>
-                      <strong>Existem usos de aula com conta aberta</strong>
+                      <strong>
+                        {horarioJustificativaAtivo
+                          ? "Hora de justificar usos com conta aberta"
+                          : "Existem usos aguardando horario de justificativa"}
+                      </strong>
                       <p>
-                        {pendenciasUsoAula.length} registro(s) precisam ser
-                        revisados pelo professor.
+                        {pendenciasUsoAula.length} registro(s). Horario definido:{" "}
+                        {configuracoesSistema.horarioJustificativa}.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => trocarAba("movimentacoes")}
-                    >
-                      Ver movimentacoes
-                    </button>
+
+                    {usuarioAdmin ? (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => trocarAba("movimentacoes")}
+                      >
+                        Ver movimentacoes
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setModalJustificativasAberto(true)}
+                        disabled={!horarioJustificativaAtivo}
+                      >
+                        Justificar
+                      </button>
+                    )}
                   </div>
                 )}
 
                 <div className="stock-gauge-grid">
-                  {graficosPainel.map((grafico) => {
+                  {graficosPainel
+                    .filter((grafico) => usuarioAdmin || !grafico.somenteAdmin)
+                    .map((grafico) => {
                     const IconeGrafico = grafico.icone;
 
-                    return (
-                      <button
-                        type="button"
-                        className="stock-gauge-card"
-                        key={grafico.titulo}
-                        onClick={() => trocarAba(grafico.destino)}
-                      >
-                        <div className="stock-gauge-top">
-                          <span>{grafico.descricao}</span>
-                          <IconeGrafico size={22} />
-                        </div>
-
-                        <div
-                          className="semi-gauge"
-                          style={{
-                            "--gauge-angle": `${grafico.porcentagem * 1.8}deg`,
-                          }}
-                          aria-hidden="true"
+                      return (
+                        <button
+                          type="button"
+                          className="stock-gauge-card"
+                          key={grafico.titulo}
+                          onClick={() => trocarAba(grafico.destino)}
                         >
-                          <div className="semi-gauge-center">
-                            <strong>{grafico.porcentagem}%</strong>
+                          <div className="stock-gauge-top">
+                            <div>
+                              <strong>{grafico.titulo}</strong>
+                              <span>{grafico.descricao}</span>
+                            </div>
+                            <IconeGrafico size={22} />
                           </div>
-                        </div>
 
-                        <div className="stock-gauge-info">
-                          <h3>{grafico.titulo}</h3>
-                          <div>
-                            <span>{grafico.totais.kg} kg</span>
-                            <span>{grafico.totais.gramas} g</span>
+                          <div
+                            className="semi-gauge"
+                            style={{
+                              "--gauge-angle": `${grafico.porcentagem * 1.8}deg`,
+                            }}
+                            aria-hidden="true"
+                          >
+                            <div className="semi-gauge-center">
+                              <strong>{grafico.porcentagem}%</strong>
+                            </div>
                           </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+
+                          <div className="stock-gauge-info">
+                            <h3>Quantidade disponível</h3>
+                            <div>
+                              <span>{grafico.totais.kg} kg</span>
+                              <span>{grafico.totais.gramas} g</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
                 </div>
 
                 <div className="dashboard-grid">
-                  <button
-                    type="button"
-                    className="dashboard-card"
-                    onClick={() => trocarAba("principal")}
-                  >
-                    <Warehouse className="dashboard-card-icon" size={24} />
-                    <span>Estoque Principal</span>
-                    <strong>{produtosPrincipal.length}</strong>
-                  </button>
+                  {usuarioAdmin && (
+                    <button
+                      type="button"
+                      className="dashboard-card"
+                      onClick={() => trocarAba("principal")}
+                    >
+                      <Warehouse className="dashboard-card-icon" size={24} />
+                      <span>Materiais no pavilhão</span>
+                      <strong>{produtosPrincipal.length}</strong>
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -2004,20 +2214,55 @@ function App() {
                     onClick={() => trocarAba("pequeno")}
                   >
                     <Boxes className="dashboard-card-icon" size={24} />
-                    <span>Estoque Pequeno</span>
+                    <span>Materiais nos baldes</span>
                     <strong>{produtosPequeno.length}</strong>
                   </button>
 
-                  <button
-                    type="button"
-                    className="dashboard-card attention"
-                    onClick={() => trocarAba("principal")}
-                  >
-                    <AlertTriangle className="dashboard-card-icon" size={24} />
-                    <span>Atenção</span>
-                    <strong>{produtosComEstoqueBaixo.length}</strong>
-                  </button>
+                  {usuarioAdmin && (
+                    <button
+                      type="button"
+                      className="dashboard-card attention"
+                      onClick={() => trocarAba("principal")}
+                    >
+                      <AlertTriangle className="dashboard-card-icon" size={24} />
+                      <span>Itens para reposição</span>
+                      <strong>{produtosComEstoqueBaixo.length}</strong>
+                    </button>
+                  )}
                 </div>
+                {usuarioAdmin && (
+                  <section className="activity-section" aria-labelledby="recent-activity-title">
+                    <div className="activity-heading">
+                      <h2 id="recent-activity-title">Últimas movimentações</h2>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => trocarAba("movimentacoes")}
+                      >
+                        Ver histórico <ChevronRight size={14} />
+                      </button>
+                    </div>
+                    {movimentacoes.slice(0, 5).map((movimentacao) => (
+                      <article className="activity-row" key={movimentacao.id}>
+                        <History size={18} />
+                        <div>
+                          <strong>{movimentacao.titulo}</strong>
+                          <p>{movimentacao.descricao}</p>
+                        </div>
+                        <time>{formatarData(movimentacao.criadoEm)}</time>
+                      </article>
+                    ))}
+                    {movimentacoes.length === 0 && (
+                      <div className="activity-empty">
+                        <History size={24} />
+                        <div>
+                          <strong>Nenhuma movimentação registrada</strong>
+                          <p>O estoque ainda não possui atividade.</p>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                )}
               </section>
             )}
 
@@ -2191,19 +2436,6 @@ function App() {
                     <span>{produtosPrincipal.length} item(ns) no pavilhao</span>
                   </div>
 
-                  {usuarioAdmin ? (
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={abrirUsoProduto}
-                      disabled={produtosPrincipal.length === 0}
-                    >
-                      <Send size={18} />
-                      Abastecer baldes
-                    </button>
-                  ) : (
-                    <span className="read-only-note">Visualizacao do aluno</span>
-                  )}
                 </div>
 
                 <input
@@ -2220,6 +2452,10 @@ function App() {
                   {produtosFiltradosFicha.map((produto) => {
                     const statusEstoque = obterStatusEstoque(produto.quantidadeKg, obterConfiguracoesEstoqueProduto(produto));
                     const saldoParaDevolver = calcularSaldoParaDevolver(produto);
+                    const produtoNoEstoquePequeno = produtosPequeno.find((item) =>
+                      (produto.codigo && item.codigo === produto.codigo) ||
+                      (!produto.codigo && item.nome === produto.nome),
+                    );
 
                     return (
                       <article className="stock-sheet-item" key={produto.id}>
@@ -2230,10 +2466,20 @@ function App() {
                           <span>Descricao: {produto.descricao}</span>
                         </div>
 
-                        <div>
-                          <strong className="stock-quantity">
-                            {produto.quantidadeKg ?? 0} {obterUnidadeProduto(produto)}
-                          </strong>
+                        <div className="stock-locations">
+                          <div>
+                            <span className="stock-location-label">No pavilhao</span>
+                            <strong className="stock-quantity">
+                              {produto.quantidadeKg ?? 0} {obterUnidadeProduto(produto)}
+                            </strong>
+                          </div>
+                          <div className="stock-location-small">
+                            <span className="stock-location-label">Nos baldes</span>
+                            <strong className="stock-quantity">
+                              {produtoNoEstoquePequeno?.quantidadeKg ?? 0}{" "}
+                              {obterUnidadeProduto(produtoNoEstoquePequeno || produto)}
+                            </strong>
+                          </div>
                           <span>Unidade: {obterUnidadeProduto(produto)}</span>
                           <span className={`stock-pill ${statusEstoque.classe}`}>
                             {statusEstoque.texto}
@@ -2291,15 +2537,29 @@ function App() {
                     <span>{produtosPequeno.length} item(ns) nos baldes</span>
                   </div>
 
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={abrirRegistroUsoAula}
-                    disabled={produtosPequeno.length === 0}
-                  >
-                    <ClipboardList size={18} />
-                    Registrar uso
-                  </button>
+                  <div className="products-header-actions">
+                    {usuarioAdmin && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={abrirUsoProduto}
+                        disabled={produtosPrincipal.length === 0}
+                      >
+                        <Send size={18} />
+                        Abastecer baldes
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={abrirRegistroUsoAula}
+                      disabled={produtosPequeno.length === 0}
+                    >
+                      <ClipboardList size={18} />
+                      Registrar uso
+                    </button>
+                  </div>
                 </div>
 
                 <input
@@ -2488,6 +2748,41 @@ function App() {
                       </p>
                     </article>
 
+                    <article className="settings-card">
+                      <div className="settings-card-title">
+                        <Clock size={20} />
+                        <strong>Horario de justificativa</strong>
+                      </div>
+
+                      <p>
+                        Defina a partir de que horario o aluno deve justificar
+                        usos de aula que nao fecharam a conta.
+                      </p>
+
+                      <form
+                        className="settings-form single-setting-form"
+                        onSubmit={salvarConfiguracoesAdministrativas}
+                      >
+                        <label>
+                          Cobrar justificativa as
+                          <input
+                            type="time"
+                            name="horarioJustificativa"
+                            value={configuracoesSistema.horarioJustificativa}
+                            onChange={atualizarCampoConfiguracoesSistema}
+                          />
+                        </label>
+
+                        <button type="submit" className="btn-secondary">
+                          Salvar horario
+                        </button>
+                      </form>
+
+                      {erroConfiguracoesSistema && (
+                        <p className="form-error">{erroConfiguracoesSistema}</p>
+                      )}
+                    </article>
+
                     <article className="settings-card settings-card-wide final-products-card">
                       <div className="settings-card-title">
                         <PackagePlus size={20} />
@@ -2519,6 +2814,12 @@ function App() {
                             accept="image/*"
                             onChange={atualizarFotoProdutoFinal}
                           />
+                          {formProdutoFinal.fotoNome && (
+                            <span className="form-hint">
+                              Convertida: {formProdutoFinal.fotoNome} -{" "}
+                              {formProdutoFinal.fotoTamanhoKb} KB
+                            </span>
+                          )}
                         </label>
 
                         <button type="submit" className="btn-primary">
@@ -2928,7 +3229,14 @@ function App() {
                     </strong>
                   </div>
 
-                  {registroUsoPrecisaJustificativa && (
+                  {registroUsoPrecisaJustificativa && !horarioJustificativaAtivo && (
+                    <p className="usage-empty compact-message">
+                      A conta nao fechou. A justificativa sera solicitada a partir
+                      das {configuracoesSistema.horarioJustificativa}.
+                    </p>
+                  )}
+
+                  {registroUsoPrecisaJustificativa && horarioJustificativaAtivo && (
                     <label>
                       Justificativa para o professor
                       <textarea
@@ -2962,6 +3270,105 @@ function App() {
                   Registrar uso
                 </button>
               </div>
+            </section>
+          </div>
+        )}
+
+        {modalJustificativasAberto && (
+          <div className="usage-overlay">
+            <section className="usage-modal class-usage-modal">
+              <div className="usage-header">
+                <div>
+                  <span>Horario de justificativa</span>
+                  <h2>Justificar materiais da aula</h2>
+                </div>
+
+                <button
+                  type="button"
+                  className="close-modal"
+                  onClick={() => {
+                    setErroJustificativaPendente("");
+                    setModalJustificativasAberto(false);
+                  }}
+                  aria-label="Fechar"
+                  title="Fechar"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {erroJustificativaPendente && (
+                <p className="form-error">{erroJustificativaPendente}</p>
+              )}
+
+              <div className="pending-justifications-list">
+                {pendenciasJustificativaVisiveis.map((movimentacao) => (
+                  <article
+                    className="pending-justification-card"
+                    key={movimentacao.id}
+                  >
+                    <div>
+                      <strong>
+                        {movimentacao.produto?.nome || "Material nao informado"}
+                      </strong>
+                      <span>
+                        {movimentacao.usuario || "Aluno"} retirou{" "}
+                        {movimentacao.fechamento?.retirado || movimentacao.quantidadeKg}{" "}
+                        {obterUnidadeProduto(movimentacao.produto || {})}
+                      </span>
+                    </div>
+
+                    {movimentacao.fechamento && (
+                      <div className="calculation-card open">
+                        <span>Retirado: {movimentacao.fechamento.retirado}</span>
+                        <span>
+                          Informado:{" "}
+                          {Number(
+                            (
+                              Number(movimentacao.fechamento.produto || 0) +
+                              Number(movimentacao.fechamento.sucata || 0) +
+                              Number(movimentacao.fechamento.estoque || 0) +
+                              Number(movimentacao.fechamento.perda || 0)
+                            ).toFixed(2),
+                          )}
+                        </span>
+                        <strong>
+                          Diferenca: {movimentacao.fechamento.diferenca}
+                        </strong>
+                      </div>
+                    )}
+
+                    <label>
+                      Justificativa
+                      <textarea
+                        maxLength="180"
+                        placeholder="Explique o que aconteceu com a diferenca."
+                        value={justificativasPendentes[movimentacao.id] || ""}
+                        onChange={(event) =>
+                          atualizarJustificativaPendente(
+                            movimentacao.id,
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={() => enviarJustificativaPendente(movimentacao)}
+                    >
+                      Enviar justificativa
+                    </button>
+                  </article>
+                ))}
+              </div>
+
+              {pendenciasJustificativaVisiveis.length === 0 && (
+                <p className="usage-empty">
+                  Nenhuma justificativa liberada neste horario.
+                </p>
+              )}
             </section>
           </div>
         )}

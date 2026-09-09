@@ -125,6 +125,34 @@ export function excluirProdutoFinal(id) {
   return deleteDoc(produtoFinalRef);
 }
 
+export function salvarConfiguracoesSistema(configuracoes) {
+  verificarFirebase();
+  const configuracoesRef = doc(db, "configuracoes", "sistema");
+
+  return setDoc(configuracoesRef, configuracoes, { merge: true });
+}
+
+export function listarConfiguracoesSistema(callback, tratarErro) {
+  if (!db) {
+    callback({});
+    return () => {};
+  }
+
+  const configuracoesRef = doc(db, "configuracoes", "sistema");
+
+  return onSnapshot(
+    configuracoesRef,
+    (snapshot) => {
+      callback(snapshot.exists() ? snapshot.data() : {});
+    },
+    (error) => {
+      if (tratarErro) {
+        tratarErro(error);
+      }
+    },
+  );
+}
+
 export function cadastrarLinkAcesso(link) {
   verificarFirebase();
   const linkRef = doc(db, "linksAcesso", link.token);
@@ -192,6 +220,13 @@ export function cadastrarMovimentacao(movimentacao) {
     criadoEm,
     data: new Date(criadoEm).toISOString(),
   });
+}
+
+export function atualizarMovimentacao(id, movimentacao) {
+  verificarFirebase();
+  const movimentacaoRef = doc(db, "historicoMovimentacoes", id);
+
+  return updateDoc(movimentacaoRef, movimentacao);
 }
 
 export function listarMovimentacoes(callback, tratarErro) {
