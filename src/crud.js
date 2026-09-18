@@ -81,6 +81,78 @@ export function excluirProduto(id) {
   return deleteDoc(produtoRef);
 }
 
+export function cadastrarProdutoFinal(produtoFinal) {
+  verificarFirebase();
+  const produtoFinalRef = doc(db, "produtosFinais", produtoFinal.id);
+
+  return setDoc(produtoFinalRef, produtoFinal);
+}
+
+export function listarProdutosFinais(callback, tratarErro) {
+  if (!db) {
+    callback([]);
+    return () => {};
+  }
+
+  const produtosFinaisCollection = collection(db, "produtosFinais");
+  const consultaProdutosFinais = query(
+    produtosFinaisCollection,
+    orderBy("criadoEm", "desc"),
+  );
+
+  return onSnapshot(
+    consultaProdutosFinais,
+    (snapshot) => {
+      const produtosFinais = snapshot.docs.map((documento) => ({
+        id: documento.id,
+        ...documento.data(),
+      }));
+
+      callback(produtosFinais);
+    },
+    (error) => {
+      if (tratarErro) {
+        tratarErro(error);
+      }
+    },
+  );
+}
+
+export function excluirProdutoFinal(id) {
+  verificarFirebase();
+  const produtoFinalRef = doc(db, "produtosFinais", id);
+
+  return deleteDoc(produtoFinalRef);
+}
+
+export function salvarConfiguracoesSistema(configuracoes) {
+  verificarFirebase();
+  const configuracoesRef = doc(db, "configuracoes", "sistema");
+
+  return setDoc(configuracoesRef, configuracoes, { merge: true });
+}
+
+export function listarConfiguracoesSistema(callback, tratarErro) {
+  if (!db) {
+    callback({});
+    return () => {};
+  }
+
+  const configuracoesRef = doc(db, "configuracoes", "sistema");
+
+  return onSnapshot(
+    configuracoesRef,
+    (snapshot) => {
+      callback(snapshot.exists() ? snapshot.data() : {});
+    },
+    (error) => {
+      if (tratarErro) {
+        tratarErro(error);
+      }
+    },
+  );
+}
+
 export function cadastrarLinkAcesso(link) {
   verificarFirebase();
   const linkRef = doc(db, "linksAcesso", link.token);
@@ -148,6 +220,13 @@ export function cadastrarMovimentacao(movimentacao) {
     criadoEm,
     data: new Date(criadoEm).toISOString(),
   });
+}
+
+export function atualizarMovimentacao(id, movimentacao) {
+  verificarFirebase();
+  const movimentacaoRef = doc(db, "historicoMovimentacoes", id);
+
+  return updateDoc(movimentacaoRef, movimentacao);
 }
 
 export function listarMovimentacoes(callback, tratarErro) {
