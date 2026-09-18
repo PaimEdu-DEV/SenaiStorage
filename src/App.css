@@ -157,6 +157,7 @@
 .dashboard-card > span { grid-column: 1; grid-row: 1; color: var(--muted); font-size: 12px; }
 .dashboard-card strong { grid-column: 1; font-size: 28px; line-height: 1; font-weight: 650; font-variant-numeric: tabular-nums; }
 .dashboard-card.attention .dashboard-card-icon { color: var(--amber); background: var(--amber-light); }
+.dashboard-card.low .dashboard-card-icon { color: var(--red); background: var(--red-light); }
 .dashboard-card:hover, .stock-gauge-card:hover { border-color: var(--orange); }
 .stock-gauge-card { --gauge-color: var(--orange); display: grid; gap: 22px; align-content: start; min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); text-align: left; transition: border-color 160ms; }
 .stock-gauge-card:nth-child(2) { --gauge-color: var(--teal); }
@@ -192,6 +193,9 @@
 .search-input-wrap .usage-search { border: 0; padding: 0; background: transparent; box-shadow: none; height: 40px; min-height: 40px; }
 .search-input-wrap .usage-search:focus { outline: none; box-shadow: none; }
 .products-container > .usage-search { max-width: 520px; }
+.stock-filter-active { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 760px; padding: 10px 12px; border: 1px solid var(--amber); border-radius: 6px; background: var(--amber-light); color: var(--amber); font-size: 12px; }
+.stock-filter-active.low { border-color: var(--red); background: var(--red-light); color: var(--red); }
+.stock-filter-active .btn-secondary { min-height: 32px; padding: 6px 10px; font-size: 11px !important; color: inherit; }
 .registered-items-table { min-width: 0; border: 1px solid var(--border); border-radius: 8px; overflow: clip; background: var(--surface); }
 .registered-items-head, .registered-item-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(95px, .65fr) 76px; gap: 16px; align-items: center; padding: 15px 20px; }
 .registered-items-head { padding-block: 12px; background: var(--surface-soft); border-bottom: 1px solid var(--border); font-size: 10px; text-transform: uppercase; color: var(--muted); font-weight: 650; }
@@ -355,6 +359,10 @@ body:has(.usage-overlay) { overflow: hidden; }
 .pending-justification-card { display: grid; gap: 14px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
 .pending-justification-card > div:first-child { display: grid; gap: 5px; }
 .pending-justification-card span { font-size: 12px; color: var(--muted); }
+.justification-status { width: fit-content; padding: 4px 8px; border: 1px solid var(--amber); border-radius: 999px; color: var(--amber) !important; font-size: 11px !important; }
+.justification-status.enviada { border-color: var(--green); color: var(--green) !important; }
+.justification-comment { display: grid; gap: 6px; padding: 12px; border-left: 3px solid var(--orange); background: var(--surface-soft); }
+.justification-comment p { margin: 0; color: var(--text); font-size: 13px; line-height: 1.5; }
 .justification-panel { display: grid; gap: 12px; margin-top: 12px; }
 .justification-title { display: grid; gap: 4px; }
 .justification-title span { font-size: 11px; color: var(--muted); }
@@ -496,6 +504,7 @@ body:has(.usage-overlay) { overflow: hidden; }
   .products-header { align-items: flex-start; flex-direction: column; gap: 14px; }
   .products-header h2 { font-size: 22px; }
   .products-header-actions { width: 100%; }
+  .stock-filter-active { align-items: flex-start; flex-direction: column; }
   .stock-form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settings-grid, .class-usage-grid, .final-products-list { grid-template-columns: 1fr; }
   .class-usage-block + .class-usage-block { border-left: 0; border-top: 1px solid var(--border); padding: 24px 0 0; }
