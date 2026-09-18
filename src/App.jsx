@@ -31,9 +31,10 @@ import {
 import "./App.css";
 import {
   atualizarProduto,
-  atualizarMovimentacao,
+  atualizarJustificativa,
   buscarLinkAcesso,
   cadastrarMovimentacao,
+  cadastrarJustificativa,
   cadastrarLinkAcesso,
   cadastrarProduto,
   cadastrarProdutoFinal,
@@ -43,6 +44,7 @@ import {
   listarConfiguracoesSistema,
   listarLinksAcesso,
   listarMovimentacoes,
+  listarJustificativas,
   listarProdutos,
   listarProdutosFinais,
   salvarConfiguracoesSistema,
@@ -343,6 +345,7 @@ function App() {
   const [usoConfirmado, setUsoConfirmado] = useState(false);
   const [buscaProdutoUso, setBuscaProdutoUso] = useState("");
   const [buscaFichaEstoque, setBuscaFichaEstoque] = useState("");
+  const [filtroStatusFicha, setFiltroStatusFicha] = useState("todos");
   const [buscaEstoquePequeno, setBuscaEstoquePequeno] = useState("");
   const [buscaRegistroUso, setBuscaRegistroUso] = useState("");
   const [buscaTodosProdutos, setBuscaTodosProdutos] = useState("");
@@ -361,6 +364,7 @@ function App() {
   const [erroProdutoFinal, setErroProdutoFinal] = useState("");
   const [linksAcesso, setLinksAcesso] = useState([]);
   const [movimentacoes, setMovimentacoes] = useState([]);
+  const [justificativas, setJustificativas] = useState([]);
   const [formularioLink, setFormularioLink] = useState(formularioLinkInicial);
   const [erroLink, setErroLink] = useState("");
   const [erroHistorico, setErroHistorico] = useState("");
@@ -391,8 +395,17 @@ function App() {
     const busca = buscaFichaEstoque.toLowerCase().trim();
     const nome = String(produto.nome || "").toLowerCase();
     const codigo = String(produto.codigo || "").toLowerCase();
+    const status = obterStatusEstoque(
+      produto.quantidadeKg,
+      obterConfiguracoesEstoqueProduto(produto),
+    ).classe;
+    const correspondeStatus =
+      filtroStatusFicha === "todos" || status === filtroStatusFicha;
 
-    return nome.includes(busca) || codigo.includes(busca);
+    return (
+      correspondeStatus &&
+      (nome.includes(busca) || codigo.includes(busca))
+    );
   });
   const produtosFiltradosEstoquePequeno = produtosPequeno.filter((produto) => {
     const busca = buscaEstoquePequeno.toLowerCase().trim();
@@ -569,6 +582,19 @@ function App() {
     );
 
     return () => pararDeOuvirHistorico();
+  }, []);
+
+  useEffect(() => {
+    const pararDeOuvirJustificativas = listarJustificativas(
+      setJustificativas,
+      (error) => {
+        setErroJustificativaPendente(
+          `Erro ao carregar justificativas: ${error.message}`,
+        );
+      },
+    );
+
+    return () => pararDeOuvirJustificativas();
   }, []);
 
   useEffect(() => {
@@ -820,6 +846,10 @@ function App() {
       return;
     }
 
+    if (id === "principal") {
+      setFiltroStatusFicha("todos");
+    }
+
     setAbaAtiva(id);
     rolarParaTopo();
   }
@@ -891,9 +921,19 @@ function App() {
 
   function abrirFichaEstoque() {
     setBuscaFichaEstoque("");
+    setFiltroStatusFicha("todos");
     setDevolucoesFicha({});
     setErroFicha("");
     setAbaAtiva("principal");
+  }
+
+  function abrirFiltroEstoquePrincipal(status) {
+    setBuscaFichaEstoque("");
+    setFiltroStatusFicha(status);
+    setDevolucoesFicha({});
+    setErroFicha("");
+    setAbaAtiva("principal");
+    rolarParaTopo();
   }
 
   function fecharFichaEstoque() {
@@ -1069,9 +1109,9 @@ function App() {
     }
   }
 
-  async function enviarJustificativaPendente(movimentacao) {
+  async function enviarJustificativaPendente(justificativa) {
     const textoJustificativa = String(
-      justificativasPendentes[movimentacao.id] || "",
+      justificativasPendentes[justificativa.id] || "",
     ).trim();
 
     setErroJustificativaPendente("");
@@ -1082,16 +1122,15 @@ function App() {
     }
 
     try {
-      await atualizarMovimentacao(movimentacao.id, {
-        tipo: "pendencia-justificada",
-        titulo: "Pendencia de uso justificada",
-        justificativa: textoJustificativa,
-        justificativaEnviadaEm: Date.now(),
+      await atualizarJustificativa(justificativa.id, {
+        status: "enviada",
+        comentario: textoJustificativa,
+        enviadaEm: Date.now(),
       });
 
       setJustificativasPendentes({
         ...justificativasPendentes,
-        [movimentacao.id]: "",
+        [justificativa.id]: "",
       });
     } catch (error) {
       setErroJustificativaPendente(error.message);
@@ -1169,12 +1208,6 @@ function App() {
         normalizarCodigo(produtoRegistroUso.codigo),
     );
     const justificativaInformada = registroUso.justificativa.trim();
-    const tipoMovimentacao = registroUsoPrecisaJustificativa
-      ? justificativaInformada
-        ? "pendencia-justificada"
-        : "pendencia-uso"
-      : "uso-aula";
-
     try {
       await atualizarProduto(produtoRegistroUso.id, {
         quantidadeKg: novoEstoquePequeno,
@@ -1199,40 +1232,49 @@ function App() {
         }
       }
 
-      await cadastrarMovimentacao({
-        tipo: tipoMovimentacao,
-        titulo:
-          tipoMovimentacao === "pendencia-uso"
-            ? "Pendencia de uso em aula"
-            : tipoMovimentacao === "pendencia-justificada"
-              ? "Uso de aula justificado"
-              : "Uso de material em aula",
+      const fechamento = {
+        retirado: quantidadeRegistroRetirada,
+        produto: quantidadeProduto,
+        sucata: quantidadeSucata,
+        estoque: quantidadeEstoque,
+        destinoEstoque: sobraVoltaParaPrincipal
+          ? "Estoque Principal"
+          : "Estoque Pequeno",
+        perda: quantidadePerda,
+        diferenca: diferencaRegistroUso,
+      };
+
+      const movimentacaoId = await cadastrarMovimentacao({
+        tipo: "uso-aula",
+        titulo: "Uso de material em aula",
         produto: produtoRegistroUso,
         quantidadeKg: quantidadeRegistroRetirada,
         origem: "Estoque Pequeno",
         destino: "Registro de aula",
         usuario: registroUso.aluno.trim(),
         produtoFinal: quantidadeProduto > 0 ? produtoFinalSelecionado : null,
-        fechamento: {
-          retirado: quantidadeRegistroRetirada,
-          produto: quantidadeProduto,
-          sucata: quantidadeSucata,
-          estoque: quantidadeEstoque,
-          destinoEstoque: sobraVoltaParaPrincipal
-            ? "Estoque Principal"
-            : "Estoque Pequeno",
-          perda: quantidadePerda,
-          diferenca: diferencaRegistroUso,
-        },
-        horarioJustificativa:
-          configuracoesSistema.horarioJustificativa ||
-          configuracoesSistemaInicial.horarioJustificativa,
         precisaJustificativa: registroUsoPrecisaJustificativa,
-        justificativa: justificativaInformada,
+        fechamento,
         descricao:
           `${registroUso.aluno.trim()} registrou ${quantidadeRegistroRetirada} ` +
           `${obterUnidadeProduto(produtoRegistroUso)} de ${produtoRegistroUso.nome}.`,
       });
+
+      if (registroUsoPrecisaJustificativa) {
+        await cadastrarJustificativa({
+          status: justificativaInformada ? "enviada" : "pendente",
+          movimentacaoId,
+          produto: produtoRegistroUso,
+          usuario: registroUso.aluno.trim(),
+          quantidadeKg: quantidadeRegistroRetirada,
+          fechamento,
+          comentario: justificativaInformada,
+          horarioJustificativa:
+            configuracoesSistema.horarioJustificativa ||
+            configuracoesSistemaInicial.horarioJustificativa,
+          enviadaEm: justificativaInformada ? Date.now() : null,
+        });
+      }
 
       fecharRegistroUsoAula();
     } catch (error) {
@@ -1701,20 +1743,30 @@ function App() {
   const abasVisiveis = abasSistema.filter((aba) => usuarioAdmin || !aba.somenteAdmin);
   const abaAtual =
     abasVisiveis.find((aba) => aba.id === abaAtiva) || abasVisiveis[0];
-  const produtosComEstoqueBaixo = produtos.filter(
+  const produtosComEstoqueBaixo = produtosPrincipal.filter(
     (produto) =>
       obterStatusEstoque(produto.quantidadeKg, obterConfiguracoesEstoqueProduto(produto)).classe === "low",
   );
-  const pendenciasUsoAula = movimentacoes.filter(
-    (movimentacao) => movimentacao.tipo === "pendencia-uso",
+  const produtosComEstoqueAtencao = produtosPrincipal.filter(
+    (produto) =>
+      obterStatusEstoque(produto.quantidadeKg, obterConfiguracoesEstoqueProduto(produto)).classe === "attention",
+  );
+  const pendenciasUsoAula = justificativas.filter(
+    (justificativa) => justificativa.status === "pendente",
+  );
+  const justificativasParaProfessor = justificativas.filter(
+    (justificativa) =>
+      justificativa.status === "pendente" || justificativa.status === "enviada",
   );
   const horarioJustificativaAtivo = horarioJustificativaEstaAtivo(
     configuracoesSistema.horarioJustificativa,
     agora,
   );
-  const pendenciasJustificativaVisiveis = horarioJustificativaAtivo
-    ? pendenciasUsoAula
-    : [];
+  const pendenciasJustificativaVisiveis = usuarioAdmin
+    ? justificativasParaProfessor
+    : horarioJustificativaAtivo
+      ? pendenciasUsoAula
+      : [];
   const graficosPainel = [
     {
       titulo: "Estoque Principal",
@@ -2108,7 +2160,8 @@ function App() {
                   </time>
                 </div>
 
-                {pendenciasUsoAula.length > 0 && (
+                {((usuarioAdmin && justificativasParaProfessor.length > 0) ||
+                  (!usuarioAdmin && pendenciasUsoAula.length > 0)) && (
                   <div
                     className={
                       horarioJustificativaAtivo
@@ -2119,13 +2172,16 @@ function App() {
                     <AlertTriangle size={28} />
                     <div>
                       <strong>
-                        {horarioJustificativaAtivo
-                          ? "Hora de justificar usos com conta aberta"
-                          : "Existem usos aguardando horario de justificativa"}
+                        {usuarioAdmin
+                          ? "Justificativas para revisar"
+                          : horarioJustificativaAtivo
+                            ? "Hora de justificar usos com conta aberta"
+                            : "Existem usos aguardando horario de justificativa"}
                       </strong>
                       <p>
-                        {pendenciasUsoAula.length} registro(s). Horario definido:{" "}
-                        {configuracoesSistema.horarioJustificativa}.
+                        {usuarioAdmin
+                          ? `${justificativasParaProfessor.length} registro(s) enviados pelos alunos.`
+                          : `${pendenciasUsoAula.length} registro(s). Horario definido: ${configuracoesSistema.horarioJustificativa}.`}
                       </p>
                     </div>
 
@@ -2133,9 +2189,9 @@ function App() {
                       <button
                         type="button"
                         className="btn-secondary"
-                        onClick={() => trocarAba("movimentacoes")}
+                        onClick={() => setModalJustificativasAberto(true)}
                       >
-                        Ver movimentacoes
+                        Ver justificativas
                       </button>
                     ) : (
                       <button
@@ -2149,6 +2205,32 @@ function App() {
                     )}
                   </div>
                 )}
+
+                <div className="dashboard-grid">
+                  {usuarioAdmin && (
+                    <button
+                      type="button"
+                      className="dashboard-card attention"
+                      onClick={() => abrirFiltroEstoquePrincipal("attention")}
+                    >
+                      <Clock className="dashboard-card-icon" size={24} />
+                      <span>Ficar atento</span>
+                      <strong>{produtosComEstoqueAtencao.length}</strong>
+                    </button>
+                  )}
+
+                  {usuarioAdmin && (
+                    <button
+                      type="button"
+                      className="dashboard-card low"
+                      onClick={() => abrirFiltroEstoquePrincipal("low")}
+                    >
+                      <AlertTriangle className="dashboard-card-icon" size={24} />
+                      <span>Repor com urgência</span>
+                      <strong>{produtosComEstoqueBaixo.length}</strong>
+                    </button>
+                  )}
+                </div>
 
                 <div className="stock-gauge-grid">
                   {graficosPainel
@@ -2195,41 +2277,6 @@ function App() {
                     })}
                 </div>
 
-                <div className="dashboard-grid">
-                  {usuarioAdmin && (
-                    <button
-                      type="button"
-                      className="dashboard-card"
-                      onClick={() => trocarAba("principal")}
-                    >
-                      <Warehouse className="dashboard-card-icon" size={24} />
-                      <span>Materiais no pavilhão</span>
-                      <strong>{produtosPrincipal.length}</strong>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    className="dashboard-card"
-                    onClick={() => trocarAba("pequeno")}
-                  >
-                    <Boxes className="dashboard-card-icon" size={24} />
-                    <span>Materiais nos baldes</span>
-                    <strong>{produtosPequeno.length}</strong>
-                  </button>
-
-                  {usuarioAdmin && (
-                    <button
-                      type="button"
-                      className="dashboard-card attention"
-                      onClick={() => trocarAba("principal")}
-                    >
-                      <AlertTriangle className="dashboard-card-icon" size={24} />
-                      <span>Itens para reposição</span>
-                      <strong>{produtosComEstoqueBaixo.length}</strong>
-                    </button>
-                  )}
-                </div>
                 {usuarioAdmin && (
                   <section className="activity-section" aria-labelledby="recent-activity-title">
                     <div className="activity-heading">
@@ -2445,6 +2492,25 @@ function App() {
                   value={buscaFichaEstoque}
                   onChange={(event) => setBuscaFichaEstoque(event.target.value)}
                 />
+
+                {filtroStatusFicha !== "todos" && (
+                  <div
+                    className={"stock-filter-active " + filtroStatusFicha}
+                  >
+                    <span>
+                      {filtroStatusFicha === "attention"
+                        ? "Mostrando itens para ficar atento"
+                        : "Mostrando itens que precisam de reposição urgente"}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setFiltroStatusFicha("todos")}
+                    >
+                      Mostrar todos
+                    </button>
+                  </div>
+                )}
 
                 {erroFicha && <p className="form-error">{erroFicha}</p>}
 
@@ -2674,9 +2740,6 @@ function App() {
                               Destino da sobra:{" "}
                               {movimentacao.fechamento.destinoEstoque}
                             </span>
-                          )}
-                          {movimentacao.justificativa && (
-                            <span>Justificativa: {movimentacao.justificativa}</span>
                           )}
                           <span>Usuario: {movimentacao.usuario || "Sistema"}</span>
                         </div>
@@ -3279,8 +3342,8 @@ function App() {
             <section className="usage-modal class-usage-modal">
               <div className="usage-header">
                 <div>
-                  <span>Horario de justificativa</span>
-                  <h2>Justificar materiais da aula</h2>
+                  <span>{usuarioAdmin ? "Acompanhamento do professor" : "Horario de justificativa"}</span>
+                  <h2>{usuarioAdmin ? "Justificativas dos alunos" : "Justificar materiais da aula"}</h2>
                 </div>
 
                 <button
@@ -3302,71 +3365,92 @@ function App() {
               )}
 
               <div className="pending-justifications-list">
-                {pendenciasJustificativaVisiveis.map((movimentacao) => (
+                {pendenciasJustificativaVisiveis.map((justificativa) => (
                   <article
                     className="pending-justification-card"
-                    key={movimentacao.id}
+                    key={justificativa.id}
                   >
                     <div>
                       <strong>
-                        {movimentacao.produto?.nome || "Material nao informado"}
+                        {justificativa.produto?.nome || "Material nao informado"}
                       </strong>
                       <span>
-                        {movimentacao.usuario || "Aluno"} retirou{" "}
-                        {movimentacao.fechamento?.retirado || movimentacao.quantidadeKg}{" "}
-                        {obterUnidadeProduto(movimentacao.produto || {})}
+                        {justificativa.usuario || "Aluno"} retirou{" "}
+                        {justificativa.fechamento?.retirado || justificativa.quantidadeKg}{" "}
+                        {obterUnidadeProduto(justificativa.produto || {})}
                       </span>
+                      {usuarioAdmin && (
+                        <span className={`justification-status ${justificativa.status}`}>
+                          {justificativa.status === "enviada"
+                            ? "Comentario enviado"
+                            : "Aguardando comentario do aluno"}
+                        </span>
+                      )}
                     </div>
 
-                    {movimentacao.fechamento && (
+                    {justificativa.fechamento && (
                       <div className="calculation-card open">
-                        <span>Retirado: {movimentacao.fechamento.retirado}</span>
+                        <span>Retirado: {justificativa.fechamento.retirado}</span>
                         <span>
                           Informado:{" "}
                           {Number(
                             (
-                              Number(movimentacao.fechamento.produto || 0) +
-                              Number(movimentacao.fechamento.sucata || 0) +
-                              Number(movimentacao.fechamento.estoque || 0) +
-                              Number(movimentacao.fechamento.perda || 0)
+                              Number(justificativa.fechamento.produto || 0) +
+                              Number(justificativa.fechamento.sucata || 0) +
+                              Number(justificativa.fechamento.estoque || 0) +
+                              Number(justificativa.fechamento.perda || 0)
                             ).toFixed(2),
                           )}
                         </span>
                         <strong>
-                          Diferenca: {movimentacao.fechamento.diferenca}
+                          Diferenca: {justificativa.fechamento.diferenca}
                         </strong>
                       </div>
                     )}
 
-                    <label>
-                      Justificativa
-                      <textarea
-                        maxLength="180"
-                        placeholder="Explique o que aconteceu com a diferenca."
-                        value={justificativasPendentes[movimentacao.id] || ""}
-                        onChange={(event) =>
-                          atualizarJustificativaPendente(
-                            movimentacao.id,
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </label>
+                    {usuarioAdmin ? (
+                      <div className="justification-comment">
+                        <strong>Comentario do aluno</strong>
+                        <p>
+                          {justificativa.comentario ||
+                            "O aluno ainda nao enviou um comentario."}
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <label>
+                          Comentario para o professor
+                          <textarea
+                            maxLength="180"
+                            placeholder="Explique o que aconteceu com a diferenca."
+                            value={justificativasPendentes[justificativa.id] || ""}
+                            onChange={(event) =>
+                              atualizarJustificativaPendente(
+                                justificativa.id,
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </label>
 
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={() => enviarJustificativaPendente(movimentacao)}
-                    >
-                      Enviar justificativa
-                    </button>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          onClick={() => enviarJustificativaPendente(justificativa)}
+                        >
+                          Enviar comentario
+                        </button>
+                      </>
+                    )}
                   </article>
                 ))}
               </div>
 
               {pendenciasJustificativaVisiveis.length === 0 && (
                 <p className="usage-empty">
-                  Nenhuma justificativa liberada neste horario.
+                  {usuarioAdmin
+                    ? "Nenhum comentario de aluno para revisar."
+                    : "Nenhuma justificativa liberada neste horario."}
                 </p>
               )}
             </section>

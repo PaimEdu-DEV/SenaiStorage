@@ -219,7 +219,7 @@ export function cadastrarMovimentacao(movimentacao) {
     ...movimentacao,
     criadoEm,
     data: new Date(criadoEm).toISOString(),
-  });
+  }).then(() => historicoRef.id);
 }
 
 export function atualizarMovimentacao(id, movimentacao) {
@@ -247,6 +247,55 @@ export function listarMovimentacoes(callback, tratarErro) {
       }));
 
       callback(movimentacoes);
+    },
+    (error) => {
+      if (tratarErro) {
+        tratarErro(error);
+      }
+    },
+  );
+}
+
+export function cadastrarJustificativa(justificativa) {
+  verificarFirebase();
+  const justificativaRef = doc(collection(db, "justificativas"));
+  const criadoEm = Date.now();
+
+  return setDoc(justificativaRef, {
+    ...justificativa,
+    criadoEm,
+    data: new Date(criadoEm).toISOString(),
+  });
+}
+
+export function atualizarJustificativa(id, justificativa) {
+  verificarFirebase();
+  const justificativaRef = doc(db, "justificativas", id);
+
+  return updateDoc(justificativaRef, justificativa);
+}
+
+export function listarJustificativas(callback, tratarErro) {
+  if (!db) {
+    callback([]);
+    return () => {};
+  }
+
+  const justificativasCollection = collection(db, "justificativas");
+  const consultaJustificativas = query(
+    justificativasCollection,
+    orderBy("criadoEm", "desc"),
+  );
+
+  return onSnapshot(
+    consultaJustificativas,
+    (snapshot) => {
+      const justificativas = snapshot.docs.map((documento) => ({
+        id: documento.id,
+        ...documento.data(),
+      }));
+
+      callback(justificativas);
     },
     (error) => {
       if (tratarErro) {
