@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
+  CHAVES_PERMISSAO,
   OWNER_PROTECTED_MESSAGE,
   PERMISSOES,
   contarPermissoes,
@@ -49,9 +50,17 @@ function gerarSenhaTemporaria() {
 // que ja existe.
 function ModalPermissoes({ titulo, descricao, valor, salvando, aoConfirmar, aoFechar }) {
   const [marcadas, setMarcadas] = useState(valor);
+  const todasLigadas = CHAVES_PERMISSAO.every((chave) => marcadas[chave] === true);
 
   function alternar(chave) {
     setMarcadas((atual) => ({ ...atual, [chave]: !atual[chave] }));
+  }
+
+  function alternarTodas() {
+    const proximo = !todasLigadas;
+    setMarcadas(
+      Object.fromEntries(CHAVES_PERMISSAO.map((chave) => [chave, proximo])),
+    );
   }
 
   return (
@@ -78,6 +87,17 @@ function ModalPermissoes({ titulo, descricao, valor, salvando, aoConfirmar, aoFe
           <span>{descricao}</span>
         </p>
 
+        <label className="permissao-item selecionar-todos">
+          <span>Selecionar todas as permissoes</span>
+          <input
+            type="checkbox"
+            role="switch"
+            className="toggle-switch"
+            checked={todasLigadas}
+            onChange={alternarTodas}
+          />
+        </label>
+
         <div className="permissoes-grid">
           {PERMISSOES.map((grupo) => (
             <section key={grupo.grupo}>
@@ -85,12 +105,14 @@ function ModalPermissoes({ titulo, descricao, valor, salvando, aoConfirmar, aoFe
 
               {grupo.itens.map((item) => (
                 <label className="permissao-item" key={item.chave}>
+                  <span>{item.titulo}</span>
                   <input
                     type="checkbox"
+                    role="switch"
+                    className="toggle-switch"
                     checked={marcadas[item.chave] === true}
                     onChange={() => alternar(item.chave)}
                   />
-                  <span>{item.titulo}</span>
                 </label>
               ))}
             </section>
@@ -281,18 +303,6 @@ export default function PaginaEquipe() {
               </span>
             </label>
 
-            <label>
-              Perfil
-              <select
-                value={formulario.role}
-                onChange={(evento) =>
-                  setFormulario({ ...formulario, role: evento.target.value })
-                }
-              >
-                <option value="admin">Professor (permissoes escolhidas)</option>
-                <option value="superadmin">Super Admin (acesso total)</option>
-              </select>
-            </label>
           </div>
 
           {mensagem && <p className="form-hint">{mensagem}</p>}
@@ -475,11 +485,7 @@ export default function PaginaEquipe() {
       {cadastroPendente && (
         <ModalPermissoes
           titulo={`O que ${cadastroPendente.nome || "este usuario"} pode fazer`}
-          descricao={
-            cadastroPendente.role === "superadmin"
-              ? "Super Admin tem acesso total: as marcacoes abaixo ficam apenas registradas."
-              : "Marque o que este professor podera fazer. O que ficar desmarcado sera bloqueado no sistema."
-          }
+          descricao="Ligue o que este professor podera fazer. O que ficar desligado sera bloqueado no sistema. Promover a Super Admin e feito depois, na lista da equipe."
           valor={permissoesPadrao()}
           salvando={salvando}
           aoConfirmar={confirmarCadastro}
@@ -490,7 +496,7 @@ export default function PaginaEquipe() {
       {edicaoPermissoes && (
         <ModalPermissoes
           titulo={`Permissoes de ${edicaoPermissoes.nome || edicaoPermissoes.email}`}
-          descricao="Marque o que esta pessoa pode fazer. O que ficar desmarcado sera bloqueado no sistema."
+          descricao="Ligue o que esta pessoa pode fazer. O que ficar desligado sera bloqueado no sistema."
           valor={edicaoPermissoes.permissoes}
           salvando={salvando}
           aoConfirmar={confirmarEdicaoPermissoes}

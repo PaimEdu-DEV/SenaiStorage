@@ -42,10 +42,8 @@ import {
   cadastrarJustificativa,
   cadastrarLinkAcesso,
   cadastrarProduto,
-  cadastrarProdutoFinal,
   excluirProduto,
   excluirLinkAcesso,
-  excluirProdutoFinal,
   listarConfiguracoesSistema,
   listarLinksAcesso,
   listarMovimentacoes,
@@ -66,6 +64,7 @@ import LoginModal from "./components/LoginModal";
 import PainelBackups from "./components/PainelBackups";
 import PaginaAuditoria from "./components/PaginaAuditoria";
 import PaginaEquipe from "./components/PaginaEquipe";
+import PaginaProdutos from "./components/PaginaProdutos";
 import PrimeiroAcessoModal from "./components/PrimeiroAcessoModal";
 import senaiLogo from "./assets/senai-logo.png";
 
@@ -138,12 +137,6 @@ const formularioLinkInicial = {
   valorTempo: "",
   unidadeTempo: "minutos",
 };
-const produtoFinalInicial = {
-  nome: "",
-  foto: "",
-  fotoNome: "",
-  fotoTamanhoKb: "",
-};
 const configuracoesSistemaInicial = {
   horarioJustificativa: "17:00",
 };
@@ -213,41 +206,6 @@ function formatarData(timestamp) {
   return new Date(timestamp).toLocaleString("pt-BR");
 }
 
-function converterImagemParaWebp(arquivo, larguraMaxima = 800, qualidade = 0.78) {
-  return new Promise((resolve, reject) => {
-    const imagem = new Image();
-    const urlTemporaria = URL.createObjectURL(arquivo);
-
-    imagem.onload = () => {
-      const proporcao = Math.min(1, larguraMaxima / imagem.width);
-      const largura = Math.round(imagem.width * proporcao);
-      const altura = Math.round(imagem.height * proporcao);
-      const canvas = document.createElement("canvas");
-      const contexto = canvas.getContext("2d");
-
-      canvas.width = largura;
-      canvas.height = altura;
-      contexto.drawImage(imagem, 0, 0, largura, altura);
-
-      const imagemWebp = canvas.toDataURL("image/webp", qualidade);
-      const tamanhoKb = Math.round((imagemWebp.length * 3) / 4 / 1024);
-
-      URL.revokeObjectURL(urlTemporaria);
-      resolve({
-        imagemWebp,
-        tamanhoKb,
-        nome: arquivo.name.replace(/\.[^.]+$/, ".webp"),
-      });
-    };
-
-    imagem.onerror = () => {
-      URL.revokeObjectURL(urlTemporaria);
-      reject(new Error("Nao foi possivel converter a imagem para WebP."));
-    };
-
-    imagem.src = urlTemporaria;
-  });
-}
 
 function horarioJustificativaEstaAtivo(horarioJustificativa, dataAtual) {
   const [hora, minuto] = String(horarioJustificativa || "17:00")
@@ -349,7 +307,6 @@ function App() {
   const [loginAberto, setLoginAberto] = useState(false);
   const [confirmacao, setConfirmacao] = useState(null);
   const [produtosFinais, setProdutosFinais] = useState([]);
-  const [formProdutoFinal, setFormProdutoFinal] = useState(produtoFinalInicial);
   const [configuracoesSistema, setConfiguracoesSistema] = useState(
     configuracoesSistemaInicial,
   );
@@ -391,7 +348,6 @@ function App() {
   const [erroUso, setErroUso] = useState("");
   const [erroFicha, setErroFicha] = useState("");
   const [erroEstoquePequeno, setErroEstoquePequeno] = useState("");
-  const [erroProdutoFinal, setErroProdutoFinal] = useState("");
   const [linksAcesso, setLinksAcesso] = useState([]);
   const [movimentacoes, setMovimentacoes] = useState([]);
   const [justificativas, setJustificativas] = useState([]);
@@ -1136,103 +1092,6 @@ function App() {
     });
   }
 
-  function atualizarCampoProdutoFinal(event) {
-    const { name, value } = event.target;
-
-    setFormProdutoFinal({
-      ...formProdutoFinal,
-      [name]: value,
-    });
-  }
-
-  function atualizarCampoConfiguracoesSistema(event) {
-    const { name, value } = event.target;
-
-    setConfiguracoesSistema({
-      ...configuracoesSistema,
-      [name]: value,
-    });
-  }
-
-  function atualizarJustificativaPendente(id, valor) {
-    setJustificativasPendentes({
-      ...justificativasPendentes,
-      [id]: valor,
-    });
-  }
-
-  async function atualizarFotoProdutoFinal(event) {
-    const arquivo = event.target.files?.[0];
-
-    if (!arquivo) {
-      return;
-    }
-
-    setErroProdutoFinal("");
-
-    try {
-      const fotoConvertida = await converterImagemParaWebp(arquivo);
-
-      setFormProdutoFinal({
-        ...formProdutoFinal,
-        foto: fotoConvertida.imagemWebp,
-        fotoNome: fotoConvertida.nome,
-        fotoTamanhoKb: fotoConvertida.tamanhoKb,
-      });
-    } catch (error) {
-      setErroProdutoFinal(traduzirErro(error));
-    }
-  }
-
-  function atualizarDevolucaoEstoquePequeno(id, valor) {
-    setDevolucoesEstoquePequeno({
-      ...devolucoesEstoquePequeno,
-      [id]: valor,
-    });
-  }
-
-  function atualizarDestinoDevolucaoEstoquePequeno(id, valor) {
-    setDestinosDevolucaoEstoquePequeno({
-      ...destinosDevolucaoEstoquePequeno,
-      [id]: valor,
-    });
-  }
-
-  async function salvarProdutoFinal(event) {
-    event.preventDefault();
-    setErroProdutoFinal("");
-
-    if (!formProdutoFinal.nome.trim()) {
-      setErroProdutoFinal("Informe o nome do produto final.");
-      return;
-    }
-
-    const novoProdutoFinal = {
-      id: crypto.randomUUID(),
-      nome: formProdutoFinal.nome.trim(),
-      foto: formProdutoFinal.foto,
-      fotoNome: formProdutoFinal.fotoNome,
-      fotoTamanhoKb: formProdutoFinal.fotoTamanhoKb,
-      criadoEm: Date.now(),
-    };
-
-    try {
-      await cadastrarProdutoFinal(novoProdutoFinal);
-      setFormProdutoFinal(produtoFinalInicial);
-    } catch (error) {
-      setErroProdutoFinal(traduzirErro(error));
-    }
-  }
-
-  async function removerProdutoFinal(id) {
-    setErroProdutoFinal("");
-
-    try {
-      await excluirProdutoFinal(id);
-    } catch (error) {
-      setErroProdutoFinal(traduzirErro(error));
-    }
-  }
 
   async function salvarConfiguracoesAdministrativas(event) {
     event.preventDefault();
@@ -1836,6 +1695,13 @@ function App() {
       titulo: "Pequeno",
       descricao: "Baldes usados nas aulas.",
       icone: Boxes,
+      somenteAdmin: false,
+    },
+    {
+      id: "produtos",
+      titulo: "Produtos",
+      descricao: "Catalogo do que pode ser feito em aula.",
+      icone: PackagePlus,
       somenteAdmin: false,
     },
     {
@@ -3034,86 +2900,6 @@ function App() {
                       )}
                     </article>
 
-                    <article className="settings-card settings-card-wide final-products-card">
-                      <div className="settings-card-title">
-                        <PackagePlus size={20} />
-                        <strong>Produtos finais</strong>
-                      </div>
-
-                      <p>
-                        Cadastre os produtos que podem ser feitos em aula para o
-                        aluno selecionar no registro de uso.
-                      </p>
-
-                      <form className="final-product-form" onSubmit={salvarProdutoFinal}>
-                        <label>
-                          Nome do produto final
-                          <input
-                            type="text"
-                            name="nome"
-                            maxLength="45"
-                            placeholder="Ex: Chaveiro"
-                            value={formProdutoFinal.nome}
-                            onChange={atualizarCampoProdutoFinal}
-                          />
-                        </label>
-
-                        <label>
-                          Foto do produto
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={atualizarFotoProdutoFinal}
-                          />
-                          {formProdutoFinal.fotoNome && (
-                            <span className="form-hint">
-                              Convertida: {formProdutoFinal.fotoNome} -{" "}
-                              {formProdutoFinal.fotoTamanhoKb} KB
-                            </span>
-                          )}
-                        </label>
-
-                        <button type="submit" className="btn-primary">
-                          Cadastrar
-                        </button>
-                      </form>
-
-                      {erroProdutoFinal && (
-                        <p className="form-error">{erroProdutoFinal}</p>
-                      )}
-
-                      <div className="final-products-list">
-                        {produtosFinais.map((produtoFinal) => (
-                          <article className="final-product-card" key={produtoFinal.id}>
-                            <div className="final-product-thumb">
-                              {produtoFinal.foto ? (
-                                <img src={produtoFinal.foto} alt={produtoFinal.nome} />
-                              ) : (
-                                <PackagePlus size={20} />
-                              )}
-                            </div>
-
-                            <strong>{produtoFinal.nome}</strong>
-
-                            <button
-                              type="button"
-                              className="icon-button delete"
-                              onClick={() => removerProdutoFinal(produtoFinal.id)}
-                              aria-label={`Remover ${produtoFinal.nome}`}
-                              title="Remover"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </article>
-                        ))}
-                      </div>
-
-                      {produtosFinais.length === 0 && (
-                        <span className="settings-empty">
-                          Nenhum produto final cadastrado ainda.
-                        </span>
-                      )}
-                    </article>
 
                     <article className="settings-card">
                       <div className="settings-card-title">
@@ -3137,6 +2923,10 @@ function App() {
                   </div>
                 </section>
               </section>
+            )}
+
+            {abaAtiva === "produtos" && (
+              <PaginaProdutos aoPedirConfirmacao={setConfirmacao} />
             )}
 
             {usuarioAdmin && abaAtiva === "equipe" && <PaginaEquipe />}
