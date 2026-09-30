@@ -774,3 +774,6 @@ input:-webkit-autofill:focus {
 .produto-previa img { max-height: 150px; border: 1px solid var(--border); border-radius: 6px; }
 .produto-previa small { color: var(--muted); font-size: 10px; }
 .auth-modal textarea { min-height: 84px; }
+
+/* O atributo hidden precisa vencer o display das classes de botao. */
+.app [hidden] { display: none !important; }

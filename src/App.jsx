@@ -20,7 +20,6 @@ import {
   Moon,
   PackagePlus,
   PackageSearch,
-  Pencil,
   RulerDimensionLine,
   ScrollText,
   Search,
@@ -28,7 +27,6 @@ import {
   Settings,
   ShieldCheck,
   Sun,
-  Trash2,
   Users,
   Warehouse,
   X,
@@ -59,6 +57,7 @@ import { traduzirErro } from "./lib/mensagensErro";
 import { criarLogAuditoria } from "./services/auditService";
 import { useAuth } from "./contexts/useAuth";
 import AcessoRevogadoModal from "./components/AcessoRevogadoModal";
+import AcoesProduto from "./components/AcoesProduto";
 import ConfirmacaoModal from "./components/ConfirmacaoModal";
 import LoginModal from "./components/LoginModal";
 import PainelBackups from "./components/PainelBackups";
@@ -372,6 +371,16 @@ function App() {
   } = useAuth();
   // Modo professor exige login valido: o botao de perfil sozinho nao concede acesso.
   const usuarioAdmin = ehAdmin && perfilSistema === perfilAdmin;
+  // Cada acao da tela consulta a permissao: sem ela, o botao nem e renderizado.
+  const temPermissao = (chave) => usuarioAdmin && podeFazer(perfilAutenticado, chave);
+  const podeCriarProduto = temPermissao("produtos.criar");
+  const podeEditarProduto = temPermissao("produtos.editar");
+  const podeExcluirProduto = temPermissao("produtos.excluir");
+  const podeMovimentarEstoque = temPermissao("estoque.movimentar");
+  const podeDevolverMaterial = temPermissao("estoque.devolver");
+  const podeResponderJustificativas = temPermissao("justificativas.responder");
+  const podeGerarLinks = temPermissao("links.gerar");
+  const podeEditarConfiguracoes = temPermissao("configuracoes.editar");
 
   // Cada produto e um unico documento: quantidadeKg e o saldo do pavilhao e
   // quantidadePequeno o dos baldes. A lista de baldes e uma visao derivada,
@@ -1276,8 +1285,8 @@ function App() {
   }
 
   async function registrarUsoEstoquePequeno(produto) {
-    if (!usuarioAdmin) {
-      setErroEstoquePequeno("Apenas professores/admins podem registrar uso.");
+    if (!podeMovimentarEstoque) {
+      setErroEstoquePequeno("Voce nao tem permissao para registrar uso.");
       return;
     }
 
@@ -1363,8 +1372,8 @@ function App() {
   }
 
   async function devolverSobraEstoquePequeno(produto) {
-    if (!usuarioAdmin) {
-      setErroEstoquePequeno("Apenas professores/admins podem registrar sobra.");
+    if (!podeMovimentarEstoque) {
+      setErroEstoquePequeno("Voce nao tem permissao para registrar sobra.");
       return;
     }
 
@@ -1444,8 +1453,8 @@ function App() {
   }
 
   async function devolverKgProduto(produto) {
-    if (!usuarioAdmin) {
-      setErroFicha("Apenas professores/admins podem devolver material.");
+    if (!podeDevolverMaterial) {
+      setErroFicha("Voce nao tem permissao para devolver material.");
       return;
     }
 
@@ -1576,8 +1585,8 @@ function App() {
   }
 
   async function confirmarUsoProduto() {
-    if (!usuarioAdmin) {
-      setErroUso("Apenas professores/admins podem movimentar produtos.");
+    if (!podeMovimentarEstoque) {
+      setErroUso("Voce nao tem permissao para movimentar produtos.");
       return;
     }
 
@@ -2238,7 +2247,7 @@ function App() {
                       </p>
                     </div>
 
-                    {usuarioAdmin ? (
+                    {podeResponderJustificativas ? (
                       <button
                         type="button"
                         className="btn-secondary"
@@ -2374,7 +2383,7 @@ function App() {
                     <span>{produtos.length} produto(s) no sistema</span>
                   </div>
 
-                  {usuarioAdmin ? (
+                  {podeCriarProduto ? (
                     <button
                       type="button"
                       className="btn-primary"
@@ -2384,7 +2393,9 @@ function App() {
                       Nova entrada
                     </button>
                   ) : (
-                    <span className="read-only-note">Visualizacao do aluno</span>
+                    <span className="read-only-note">
+                      {usuarioAdmin ? "Somente consulta" : "Visualizacao do aluno"}
+                    </span>
                   )}
                 </div>
 
@@ -2453,31 +2464,13 @@ function App() {
                         </div>
 
                         <div className="registered-item-actions">
-                          {usuarioAdmin ? (
-                            <>
-                              <button
-                                type="button"
-                                className="icon-button edit"
-                                onClick={() => editarProduto(produto)}
-                                aria-label={`Editar ${produto.nome}`}
-                                title="Editar"
-                              >
-                                <Pencil size={20} />
-                              </button>
-
-                              <button
-                                type="button"
-                                className="icon-button delete"
-                                onClick={() => removerProduto(produto.id)}
-                                aria-label={`Excluir ${produto.nome}`}
-                                title="Excluir"
-                              >
-                                <Trash2 size={20} />
-                              </button>
-                            </>
-                          ) : (
-                            <span className="read-only-note compact">Consulta</span>
-                          )}
+                          <AcoesProduto
+                            produto={produto}
+                            podeEditar={podeEditarProduto}
+                            podeExcluir={podeExcluirProduto}
+                            aoEditar={editarProduto}
+                            aoExcluir={removerProduto}
+                          />
                         </div>
                       </article>
                     ))}
@@ -2607,7 +2600,7 @@ function App() {
 
                         <p>{statusEstoque.descricao}</p>
 
-                        {usuarioAdmin && saldoParaDevolver > 0 && (
+                        {podeDevolverMaterial && saldoParaDevolver > 0 && (
                           <div className="stock-return">
                             <label>
                               Devolver sobra de retirada emergencial
@@ -2657,7 +2650,7 @@ function App() {
                   </div>
 
                   <div className="products-header-actions">
-                    {usuarioAdmin && (
+                    {podeMovimentarEstoque && (
                       <button
                         type="button"
                         className="btn-secondary"
@@ -2674,6 +2667,7 @@ function App() {
                       className="btn-primary"
                       onClick={abrirRegistroUsoAula}
                       disabled={produtosPequeno.length === 0}
+                      hidden={usuarioAdmin && !podeMovimentarEstoque}
                     >
                       <ClipboardList size={18} />
                       Registrar uso
@@ -2865,6 +2859,7 @@ function App() {
                       </p>
                     </article>
 
+                    {podeEditarConfiguracoes && (
                     <article className="settings-card">
                       <div className="settings-card-title">
                         <Clock size={20} />
@@ -2899,8 +2894,10 @@ function App() {
                         <p className="form-error">{erroConfiguracoesSistema}</p>
                       )}
                     </article>
+                    )}
 
 
+                    {podeGerarLinks && (
                     <article className="settings-card">
                       <div className="settings-card-title">
                         <Settings size={20} />
@@ -2920,6 +2917,7 @@ function App() {
                         Gerar link
                       </button>
                     </article>
+                    )}
                   </div>
                 </section>
               </section>
@@ -3893,31 +3891,13 @@ function App() {
                     </div>
 
                     <div className="registered-item-actions">
-                      {usuarioAdmin ? (
-                        <>
-                          <button
-                            type="button"
-                            className="icon-button edit"
-                            onClick={() => editarProduto(produto)}
-                            aria-label={`Editar ${produto.nome}`}
-                            title="Editar"
-                          >
-                            <Pencil size={20} />
-                          </button>
-
-                          <button
-                            type="button"
-                            className="icon-button delete"
-                            onClick={() => removerProduto(produto.id)}
-                            aria-label={`Excluir ${produto.nome}`}
-                            title="Excluir"
-                          >
-                            <Trash2 size={20} />
-                          </button>
-                        </>
-                      ) : (
-                        <span className="read-only-note compact">Consulta</span>
-                      )}
+                      <AcoesProduto
+                        produto={produto}
+                        podeEditar={podeEditarProduto}
+                        podeExcluir={podeExcluirProduto}
+                        aoEditar={editarProduto}
+                        aoExcluir={removerProduto}
+                      />
                     </div>
                   </article>
                 ))}
@@ -4237,27 +4217,15 @@ function App() {
                     </span>
                   </div>
 
-                  {usuarioAdmin && (
+                  {(podeEditarProduto || podeExcluirProduto) && (
                     <div className="product-actions">
-                      <button
-                        type="button"
-                        className="icon-button edit"
-                        onClick={() => editarProduto(produto)}
-                        aria-label={`Editar ${produto.nome}`}
-                        title="Editar"
-                      >
-                        <Pencil size={20} />
-                      </button>
-
-                      <button
-                        type="button"
-                        className="icon-button delete"
-                        onClick={() => removerProduto(produto.id)}
-                        aria-label={`Excluir ${produto.nome}`}
-                        title="Excluir"
-                      >
-                        <Trash2 size={20} />
-                      </button>
+                      <AcoesProduto
+                        produto={produto}
+                        podeEditar={podeEditarProduto}
+                        podeExcluir={podeExcluirProduto}
+                        aoEditar={editarProduto}
+                        aoExcluir={removerProduto}
+                      />
                     </div>
                   )}
                 </article>
@@ -4659,31 +4627,13 @@ function App() {
                   </div>
 
                   <div className="registered-item-actions">
-                    {usuarioAdmin ? (
-                      <>
-                        <button
-                          type="button"
-                          className="icon-button edit"
-                          onClick={() => editarProduto(produto)}
-                          aria-label={`Editar ${produto.nome}`}
-                          title="Editar"
-                        >
-                          <Pencil size={20} />
-                        </button>
-
-                        <button
-                          type="button"
-                          className="icon-button delete"
-                          onClick={() => removerProduto(produto.id)}
-                          aria-label={`Excluir ${produto.nome}`}
-                          title="Excluir"
-                        >
-                          <Trash2 size={20} />
-                        </button>
-                      </>
-                    ) : (
-                      <span className="read-only-note compact">Consulta</span>
-                    )}
+                    <AcoesProduto
+                      produto={produto}
+                      podeEditar={podeEditarProduto}
+                      podeExcluir={podeExcluirProduto}
+                      aoEditar={editarProduto}
+                      aoExcluir={removerProduto}
+                    />
                   </div>
                 </article>
               ))}
