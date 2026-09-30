@@ -1,4 +1,4 @@
-import { ImagePlus, PackagePlus, Pencil, Search, Trash2, X } from "lucide-react";
+﻿import { ImagePlus, PackagePlus, Pencil, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { podeFazer } from "../config/security";
 import { useAuth } from "../contexts/useAuth";
@@ -174,42 +174,44 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
   }
 
   return (
-    <section className="tab-page">
-      <section className="form-container">
-        <div className="products-header">
-          <div>
-            <span>Catalogo</span>
-            <h2>Produtos</h2>
-          </div>
-
-          {podeCriar && (
-            <button type="button" className="btn-primary" onClick={abrirCadastro}>
-              <PackagePlus size={16} />
-              Novo produto
-            </button>
-          )}
-        </div>
-
-        <p className="form-hint">
-          Produtos que podem ser feitos em aula. {produtosFinais.length} cadastrado(s).
-        </p>
-
-        <div className="inline-filter-bar">
-          <span className="search-input-wrap">
-            <Search size={16} />
-            <input
-              className="usage-search"
-              placeholder="Buscar por nome ou descricao..."
-              value={busca}
-              onChange={(evento) => setBusca(evento.target.value)}
-            />
+    <section className="tab-page products-container">
+      <div className="products-header">
+        <div>
+          <h2>Produtos</h2>
+          <span>
+            {produtosFinais.length} produto(s) que podem ser feitos em aula
           </span>
         </div>
 
-        {erro && <p className="form-error">{erro}</p>}
+        {podeCriar ? (
+          <button type="button" className="btn-primary" onClick={abrirCadastro}>
+            <PackagePlus size={18} />
+            Novo produto
+          </button>
+        ) : (
+          <span className="read-only-note">
+            {ehAdmin ? "Somente consulta" : "Visualizacao do aluno"}
+          </span>
+        )}
+      </div>
+
+      <div className="inline-filter-bar filtro-sem-botao">
+        <div className="search-input-wrap">
+          <Search size={18} />
+          <input
+            type="text"
+            className="usage-search"
+            placeholder="Buscar por nome ou descricao..."
+            value={busca}
+            onChange={(evento) => setBusca(evento.target.value)}
+          />
+        </div>
+      </div>
+
+      {erro && <p className="form-error">{erro}</p>}
 
         {filtrados.length === 0 ? (
-          <div className="empty-state">
+          <div className="empty-state empty-state-boxed">
             <PackagePlus size={28} />
             <p>
               {produtosFinais.length === 0
@@ -268,7 +270,6 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
             ))}
           </div>
         )}
-      </section>
 
       {modalAberto && (
         <div className="usage-overlay" role="dialog" aria-modal="true">

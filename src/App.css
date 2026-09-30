@@ -777,3 +777,18 @@ input:-webkit-autofill:focus {
 
 /* O atributo hidden precisa vencer o display das classes de botao. */
 .app [hidden] { display: none !important; }
+
+/* Busca sem botao de filtro ao lado: ocupa a linha inteira. */
+.inline-filter-bar.filtro-sem-botao { grid-template-columns: minmax(0, 1fr); }
+
+/* Vazio com moldura: o texto centralizado deixa de parecer solto na pagina. */
+.empty-state-boxed {
+  margin-top: 4px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+}
+.empty-state-boxed > svg { justify-self: center; color: var(--muted); }
+
+.products-container > .produtos-grid { margin-top: 20px; }
+.products-container > .inline-filter-bar { margin-top: 20px; }
