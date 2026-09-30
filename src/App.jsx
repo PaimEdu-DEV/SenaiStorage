@@ -19,7 +19,6 @@ import {
   LogOut,
   Moon,
   PackagePlus,
-  PackageSearch,
   RulerDimensionLine,
   ScrollText,
   Search,
@@ -564,7 +563,7 @@ function App() {
 
     setPerfilSistema(perfilAluno);
     setAbaAtiva((abaAtual) =>
-      ["equipe", "auditoria", "backups", "principal", "movimentacoes"].includes(abaAtual) ? "painel" : abaAtual,
+      ["equipe", "auditoria", "backups", "movimentacoes"].includes(abaAtual) ? "painel" : abaAtual,
     );
   }, [ehAdmin]);
 
@@ -942,7 +941,7 @@ function App() {
   }
 
   function trocarAba(id) {
-    const abasRestritasAluno = ["equipe", "auditoria", "backups", "principal", "movimentacoes"];
+    const abasRestritasAluno = ["equipe", "auditoria", "backups", "movimentacoes"];
 
     if (!usuarioAdmin && abasRestritasAluno.includes(id)) {
       setAbaAtiva("painel");
@@ -969,7 +968,7 @@ function App() {
 
     if (
       novoPerfil === perfilAluno &&
-      ["equipe", "auditoria", "backups", "principal", "movimentacoes"].includes(abaAtiva)
+      ["equipe", "auditoria", "backups", "movimentacoes"].includes(abaAtiva)
     ) {
       setProdutoEditandoId(null);
       setFormulario(formularioInicial);
@@ -985,7 +984,7 @@ function App() {
   function abrirTodosProdutos() {
     setBuscaTodosProdutos("");
     setPaginaTodosProdutos(1);
-    setAbaAtiva("entrada");
+    setAbaAtiva("principal");
     rolarParaTopo();
   }
 
@@ -1687,18 +1686,13 @@ function App() {
       somenteAdmin: false,
     },
     {
-      id: "entrada",
-      titulo: "Itens cadastrados",
-      descricao: "Lista completa dos materiais.",
-      icone: PackageSearch,
-      somenteAdmin: false,
-    },
-    {
       id: "principal",
-      titulo: "Principal",
-      descricao: "Pavilhao e estoque grande.",
+      titulo: "Estoque Principal",
+      descricao: "Materiais cadastrados e saldo do pavilhao.",
       icone: Warehouse,
-      somenteAdmin: true,
+      // Aluno consulta o estoque: as acoes dentro da aba e que dependem
+      // de permissao.
+      somenteAdmin: false,
     },
     {
       id: "pequeno",
@@ -2387,12 +2381,14 @@ function App() {
               </section>
             )}
 
-            {abaAtiva === "entrada" && (
+            {abaAtiva === "principal" && (
               <section className="tab-page products-container">
                 <div className="products-header">
                   <div>
-                    <h2>Itens cadastrados</h2>
-                    <span>{produtos.length} produto(s) no sistema</span>
+                    <h2>Estoque Principal</h2>
+                    <span>
+                      {produtos.length} produto(s) cadastrados no pavilhao
+                    </span>
                   </div>
 
                   {podeCriarProduto ? (
@@ -2537,10 +2533,11 @@ function App() {
               <section className="tab-page products-container">
                 <div className="products-header">
                   <div>
-                    <h2>Estoque Principal</h2>
-                    <span>{produtosPrincipal.length} item(ns) no pavilhao</span>
+                    <h2>Fichas do pavilhao</h2>
+                    <span>
+                      {produtosPrincipal.length} item(ns) com saldo e devolucao
+                    </span>
                   </div>
-
                 </div>
 
                 <input
