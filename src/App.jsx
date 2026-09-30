@@ -462,8 +462,18 @@ function App() {
     const busca = buscaTodosProdutos.toLowerCase().trim();
     const nome = String(produto.nome || "").toLowerCase();
     const codigo = String(produto.codigo || "").toLowerCase();
+    const encontrado = nome.includes(busca) || codigo.includes(busca);
 
-    return nome.includes(busca) || codigo.includes(busca);
+    // O painel manda o usuario para ca ja filtrando por reposicao ou atencao.
+    if (filtroStatusFicha === "todos") return encontrado;
+
+    return (
+      encontrado &&
+      obterStatusEstoque(
+        produto.quantidadeKg,
+        obterConfiguracoesEstoqueProduto(produto),
+      ).classe === filtroStatusFicha
+    );
   });
   const totalPaginasTodosProdutos = Math.max(
     1,
@@ -2432,6 +2442,25 @@ function App() {
                   </button>
                 </div>
 
+                {filtroStatusFicha !== "todos" && (
+                  <div className={"stock-filter-active " + filtroStatusFicha}>
+                    <span>
+                      {filtroStatusFicha === "attention"
+                        ? "Mostrando itens para ficar atento"
+                        : "Mostrando itens que precisam de reposição urgente"}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setFiltroStatusFicha("todos")}
+                    >
+                      Mostrar todos
+                    </button>
+                  </div>
+                )}
+
+                {erroFicha && <p className="form-error">{erroFicha}</p>}
+
                 <div className="registered-items-table">
                   <div className="registered-items-head" aria-hidden="true">
                     <span>Produto</span>
@@ -2442,46 +2471,99 @@ function App() {
                   </div>
 
                   <div className="registered-items-list">
-                    {produtosPaginadosTodos.map((produto) => (
-                      <article className="registered-item-row" key={produto.id}>
-                        <div className="registered-item-main">
-                          <h3>{produto.nome}</h3>
-                          <p>{produto.descricao}</p>
-                        </div>
+                    {produtosPaginadosTodos.map((produto) => {
+                      const statusEstoque = obterStatusEstoque(
+                        produto.quantidadeKg,
+                        obterConfiguracoesEstoqueProduto(produto),
+                      );
+                      const saldoParaDevolver = calcularSaldoParaDevolver(produto);
+                      const unidade = obterUnidadeProduto(produto);
 
-                        <div className="registered-item-code">
-                          <small>Codigo</small>
-                          <strong title={produto.codigo}>{produto.codigo}</strong>
-                        </div>
+                      return (
+                        <article className="registered-item-row" key={produto.id}>
+                          <div className="registered-item-main">
+                            <h3>{produto.nome}</h3>
+                            <p>{produto.descricao}</p>
+                            <ListaCamposPersonalizados
+                              campos={camposExtrasEstoque}
+                              valores={produto.personalizados || {}}
+                            />
+                          </div>
 
-                        <div className="registered-item-supplier">
-                          <small>Fornecedor</small>
-                          <strong title={produto.fornecedor}>
-                            {produto.fornecedor}
-                          </strong>
-                        </div>
+                          <div className="registered-item-code">
+                            <small>Codigo</small>
+                            <strong title={produto.codigo}>{produto.codigo}</strong>
+                          </div>
 
-                        <div className="registered-item-meta">
-                          <span className="stock-value">
-                            <small>Quantidade</small>
-                            <strong className="stock-quantity">
-                              {produto.quantidadeKg ?? 0}{" "}
-                              {obterUnidadeProduto(produto)}
+                          <div className="registered-item-supplier">
+                            <small>Fornecedor</small>
+                            <strong title={produto.fornecedor}>
+                              {produto.fornecedor}
                             </strong>
-                          </span>
-                        </div>
+                          </div>
 
-                        <div className="registered-item-actions">
-                          <AcoesProduto
-                            produto={produto}
-                            podeEditar={podeEditarProduto}
-                            podeExcluir={podeExcluirProduto}
-                            aoEditar={editarProduto}
-                            aoExcluir={removerProduto}
-                          />
-                        </div>
-                      </article>
-                    ))}
+                          <div className="registered-item-meta">
+                            <span className="stock-value">
+                              <small>No pavilhao</small>
+                              <strong className="stock-quantity">
+                                {produto.quantidadeKg ?? 0} {unidade}
+                              </strong>
+                            </span>
+
+                            <span className="stock-value">
+                              <small>Nos baldes</small>
+                              <strong className="stock-quantity">
+                                {produto.quantidadePequeno ?? 0} {unidade}
+                              </strong>
+                            </span>
+
+                            <span
+                              className={`stock-pill ${statusEstoque.classe}`}
+                              title={statusEstoque.descricao}
+                            >
+                              {statusEstoque.texto}
+                            </span>
+
+                            {podeDevolverMaterial && saldoParaDevolver > 0 && (
+                              <span className="stock-return-inline">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={saldoParaDevolver}
+                                  step="0.01"
+                                  placeholder={`Devolver ate ${saldoParaDevolver}`}
+                                  value={devolucoesFicha[produto.id] || ""}
+                                  onChange={(event) =>
+                                    atualizarDevolucaoFicha(
+                                      produto.id,
+                                      event.target.value,
+                                    )
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  className="btn-secondary"
+                                  onClick={() => devolverKgProduto(produto)}
+                                  title={`Pendente de retirada emergencial: ${saldoParaDevolver} ${unidade}`}
+                                >
+                                  Devolver
+                                </button>
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="registered-item-actions">
+                            <AcoesProduto
+                              produto={produto}
+                              podeEditar={podeEditarProduto}
+                              podeExcluir={podeExcluirProduto}
+                              aoEditar={editarProduto}
+                              aoExcluir={removerProduto}
+                            />
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -2529,130 +2611,6 @@ function App() {
               </section>
             )}
 
-            {abaAtiva === "principal" && (
-              <section className="tab-page products-container">
-                <div className="products-header">
-                  <div>
-                    <h2>Fichas do pavilhao</h2>
-                    <span>
-                      {produtosPrincipal.length} item(ns) com saldo e devolucao
-                    </span>
-                  </div>
-                </div>
-
-                <input
-                  type="text"
-                  className="usage-search"
-                  placeholder="Filtrar por nome ou codigo..."
-                  value={buscaFichaEstoque}
-                  onChange={(event) => setBuscaFichaEstoque(event.target.value)}
-                />
-
-                {filtroStatusFicha !== "todos" && (
-                  <div
-                    className={"stock-filter-active " + filtroStatusFicha}
-                  >
-                    <span>
-                      {filtroStatusFicha === "attention"
-                        ? "Mostrando itens para ficar atento"
-                        : "Mostrando itens que precisam de reposição urgente"}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => setFiltroStatusFicha("todos")}
-                    >
-                      Mostrar todos
-                    </button>
-                  </div>
-                )}
-
-                {erroFicha && <p className="form-error">{erroFicha}</p>}
-
-                <div className="stock-sheet">
-                  {produtosFiltradosFicha.map((produto) => {
-                    const statusEstoque = obterStatusEstoque(produto.quantidadeKg, obterConfiguracoesEstoqueProduto(produto));
-                    const saldoParaDevolver = calcularSaldoParaDevolver(produto);
-                    const produtoNoEstoquePequeno = produtosPequeno.find((item) =>
-                      (produto.codigo && item.codigo === produto.codigo) ||
-                      (!produto.codigo && item.nome === produto.nome),
-                    );
-
-                    return (
-                      <article className="stock-sheet-item" key={produto.id}>
-                        <div>
-                          <strong>{produto.nome}</strong>
-                          <span>Codigo: {produto.codigo}</span>
-                          <span>Fornecedor: {produto.fornecedor}</span>
-                          <span>Descricao: {produto.descricao}</span>
-                          <ListaCamposPersonalizados
-                            campos={camposExtrasEstoque}
-                            valores={produto.personalizados || {}}
-                          />
-                        </div>
-
-                        <div className="stock-locations">
-                          <div>
-                            <span className="stock-location-label">No pavilhao</span>
-                            <strong className="stock-quantity">
-                              {produto.quantidadeKg ?? 0} {obterUnidadeProduto(produto)}
-                            </strong>
-                          </div>
-                          <div className="stock-location-small">
-                            <span className="stock-location-label">Nos baldes</span>
-                            <strong className="stock-quantity">
-                              {produtoNoEstoquePequeno?.quantidadeKg ?? 0}{" "}
-                              {obterUnidadeProduto(produtoNoEstoquePequeno || produto)}
-                            </strong>
-                          </div>
-                          <span>Unidade: {obterUnidadeProduto(produto)}</span>
-                          <span className={`stock-pill ${statusEstoque.classe}`}>
-                            {statusEstoque.texto}
-                          </span>
-                        </div>
-
-                        <p>{statusEstoque.descricao}</p>
-
-                        {podeDevolverMaterial && saldoParaDevolver > 0 && (
-                          <div className="stock-return">
-                            <label>
-                              Devolver sobra de retirada emergencial
-                              <span>
-                                Pendente: {saldoParaDevolver}{" "}
-                                {obterUnidadeProduto(produto)}
-                              </span>
-                              <input
-                                type="number"
-                                min="0"
-                                max={saldoParaDevolver}
-                                step="0.01"
-                                placeholder="Ex: 4"
-                                value={devolucoesFicha[produto.id] || ""}
-                                onChange={(event) =>
-                                  atualizarDevolucaoFicha(produto.id, event.target.value)
-                                }
-                              />
-                            </label>
-
-                            <button
-                              type="button"
-                              className="btn-secondary"
-                              onClick={() => devolverKgProduto(produto)}
-                            >
-                              Devolver ao Principal
-                            </button>
-                          </div>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
-
-                {produtosFiltradosFicha.length === 0 && (
-                  <p className="usage-empty">Nenhum produto encontrado.</p>
-                )}
-              </section>
-            )}
 
             {abaAtiva === "pequeno" && (
               <section className="tab-page products-container">

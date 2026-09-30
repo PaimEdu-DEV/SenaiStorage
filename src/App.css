@@ -834,3 +834,29 @@ input:-webkit-autofill:focus {
 .gerenciar-campos-modal { width: min(900px, 100%); }
 .lista-campos-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .lista-campos-topo .field-hint { margin: 0; }
+
+/* ===== Estoque Principal: saldo, status e devolucao na propria linha ===== */
+.registered-items-head, .registered-item-row {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, .8fr) minmax(0, .8fr) minmax(210px, 1fr) 76px;
+  align-items: start;
+}
+
+.registered-item-meta { display: grid; gap: 7px; justify-items: start; }
+.registered-item-meta .stock-value { display: flex; align-items: baseline; gap: 6px; }
+.registered-item-meta .stock-value small {
+  display: inline;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+.registered-item-meta .stock-quantity { font-size: 14px; }
+
+.stock-return-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+.stock-return-inline input { width: 132px; height: 34px; font-size: 12px; }
+.stock-return-inline .btn-secondary { min-height: 34px; padding: 6px 12px; }
+
+.registered-item-main .campos-leitura { margin-top: 6px; }
+
+@media (max-width: 900px) {
+  .registered-item-meta { grid-column: 1 / -1; }
+}
