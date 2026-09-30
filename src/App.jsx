@@ -24,7 +24,6 @@ import {
   ScrollText,
   Search,
   Send,
-  Settings,
   ShieldCheck,
   Sun,
   Users,
@@ -48,7 +47,6 @@ import {
   listarJustificativas,
   listarProdutos,
   listarProdutosFinais,
-  salvarConfiguracoesSistema,
   unificarProdutosDuplicados,
 } from "./crud";
 import { firebaseConfigurado } from "./firebaseconfig";
@@ -60,7 +58,7 @@ import { useAuth } from "./contexts/useAuth";
 import AcessoRevogadoModal from "./components/AcessoRevogadoModal";
 import AcoesProduto from "./components/AcoesProduto";
 import CamposPersonalizados, { ListaCamposPersonalizados } from "./components/CamposPersonalizados";
-import GerenciadorCampos from "./components/GerenciadorCampos";
+import ModalGerenciarCampos from "./components/GerenciadorCampos";
 import ModalCampo from "./components/ModalCampo";
 import ConfirmacaoModal from "./components/ConfirmacaoModal";
 import LoginModal from "./components/LoginModal";
@@ -311,11 +309,12 @@ function App() {
   const [confirmacao, setConfirmacao] = useState(null);
   const [personalizadosProduto, setPersonalizadosProduto] = useState({});
   const [criandoCampoEstoque, setCriandoCampoEstoque] = useState(false);
+  const [editandoCampoEstoque, setEditandoCampoEstoque] = useState(null);
+  const [gerenciandoCamposEstoque, setGerenciandoCamposEstoque] = useState(false);
   const [produtosFinais, setProdutosFinais] = useState([]);
   const [configuracoesSistema, setConfiguracoesSistema] = useState(
     configuracoesSistemaInicial,
   );
-  const [erroConfiguracoesSistema, setErroConfiguracoesSistema] = useState("");
   const [modalRegistroUsoAberto, setModalRegistroUsoAberto] = useState(false);
   const [modalJustificativasAberto, setModalJustificativasAberto] =
     useState(false);
@@ -385,8 +384,6 @@ function App() {
   const podeMovimentarEstoque = temPermissao("estoque.movimentar");
   const podeDevolverMaterial = temPermissao("estoque.devolver");
   const podeResponderJustificativas = temPermissao("justificativas.responder");
-  const podeGerarLinks = temPermissao("links.gerar");
-  const podeEditarConfiguracoes = temPermissao("configuracoes.editar");
   const { personalizados: camposDoEstoque, visiveis: camposEstoqueVisiveis } =
     useCampos("estoque", { ehAdmin: usuarioAdmin });
   const camposExtrasEstoque = camposEstoqueVisiveis.filter((campo) => !campo.sistema);
@@ -567,7 +564,7 @@ function App() {
 
     setPerfilSistema(perfilAluno);
     setAbaAtiva((abaAtual) =>
-      ["admin", "equipe", "auditoria", "backups", "principal", "movimentacoes"].includes(abaAtual) ? "painel" : abaAtual,
+      ["equipe", "auditoria", "backups", "principal", "movimentacoes"].includes(abaAtual) ? "painel" : abaAtual,
     );
   }, [ehAdmin]);
 
@@ -945,7 +942,7 @@ function App() {
   }
 
   function trocarAba(id) {
-    const abasRestritasAluno = ["admin", "equipe", "auditoria", "backups", "principal", "movimentacoes"];
+    const abasRestritasAluno = ["equipe", "auditoria", "backups", "principal", "movimentacoes"];
 
     if (!usuarioAdmin && abasRestritasAluno.includes(id)) {
       setAbaAtiva("painel");
@@ -972,7 +969,7 @@ function App() {
 
     if (
       novoPerfil === perfilAluno &&
-      ["admin", "equipe", "auditoria", "backups", "principal", "movimentacoes"].includes(abaAtiva)
+      ["equipe", "auditoria", "backups", "principal", "movimentacoes"].includes(abaAtiva)
     ) {
       setProdutoEditandoId(null);
       setFormulario(formularioInicial);
@@ -1115,16 +1112,7 @@ function App() {
   }
 
 
-  async function salvarConfiguracoesAdministrativas(event) {
-    event.preventDefault();
-    setErroConfiguracoesSistema("");
 
-    try {
-      await salvarConfiguracoesSistema(configuracoesSistema);
-    } catch (error) {
-      setErroConfiguracoesSistema(traduzirErro(error));
-    }
-  }
 
   async function enviarJustificativaPendente(justificativa) {
     const textoJustificativa = String(
@@ -1757,13 +1745,6 @@ function App() {
       somenteAdmin: true,
       somenteSuperAdmin: true,
     },
-    {
-      id: "admin",
-      titulo: "Configuracoes",
-      descricao: "Ajustes gerais do sistema.",
-      icone: Settings,
-      somenteAdmin: true,
-    },
   ];
   const abasVisiveis = abasSistema.filter((aba) => {
     if (aba.somenteAdmin && !usuarioAdmin) return false;
@@ -2073,10 +2054,22 @@ function App() {
       <div className={modoEscuro ? "app dark-mode" : "app"}>
         <LoginModal aberto={loginAberto} aoFechar={() => setLoginAberto(false)} />
         <ConfirmacaoModal pedido={confirmacao} aoFechar={() => setConfirmacao(null)} />
-        {criandoCampoEstoque && (
+        {(criandoCampoEstoque || editandoCampoEstoque) && (
           <ModalCampo
             contexto="estoque"
-            aoFechar={() => setCriandoCampoEstoque(false)}
+            campo={editandoCampoEstoque}
+            aoFechar={() => {
+              setCriandoCampoEstoque(false);
+              setEditandoCampoEstoque(null);
+            }}
+          />
+        )}
+
+        {gerenciandoCamposEstoque && (
+          <ModalGerenciarCampos
+            contexto="estoque"
+            aoPedirConfirmacao={setConfirmacao}
+            aoFechar={() => setGerenciandoCamposEstoque(false)}
           />
         )}
         <div
@@ -2828,135 +2821,14 @@ function App() {
               </section>
             )}
 
-            {usuarioAdmin && abaAtiva === "admin" && (
-              <section className="tab-page admin-settings">
-                <section className="form-container">
-                  <div className="form-title">
-                    <span>Administrativo</span>
-                    <h2>Configurações do sistema</h2>
-                  </div>
-
-                  <div className="settings-grid">
-                    <article className="settings-card">
-                      <div className="settings-card-title">
-                        <ShieldCheck size={20} />
-                        <strong>Perfil atual</strong>
-                      </div>
-
-                      <p>
-                        Sessao ativa de {perfilAutenticado?.nome || "usuario"} (
-                        {perfilAutenticado?.email}) como{" "}
-                        {rotuloPapel(perfilAutenticado)}.
-                      </p>
-
-                      <div className="role-switch">
-                        <button
-                          type="button"
-                          className={
-                            usuarioAdmin ? "role-option active" : "role-option"
-                          }
-                          onClick={() => trocarPerfilSistema(perfilAdmin)}
-                        >
-                          <ShieldCheck size={18} />
-                          Professor
-                        </button>
-
-                        <button
-                          type="button"
-                          className={
-                            !usuarioAdmin ? "role-option active" : "role-option"
-                          }
-                          onClick={() => trocarPerfilSistema(perfilAluno)}
-                        >
-                          <GraduationCap size={18} />
-                          Aluno
-                        </button>
-                      </div>
-                    </article>
-
-                    <article className="settings-card">
-                      <div className="settings-card-title">
-                        <PackageSearch size={20} />
-                        <strong>Permissões preparadas</strong>
-                      </div>
-
-                      <p>
-                        Professor cadastra, edita, exclui e movimenta. Aluno
-                        consulta os estoques e registra o uso da aula.
-                      </p>
-                    </article>
-
-                    {podeEditarConfiguracoes && (
-                    <article className="settings-card">
-                      <div className="settings-card-title">
-                        <Clock size={20} />
-                        <strong>Horario de justificativa</strong>
-                      </div>
-
-                      <p>
-                        Defina a partir de que horario o aluno deve justificar
-                        usos de aula que nao fecharam a conta.
-                      </p>
-
-                      <form
-                        className="settings-form single-setting-form"
-                        onSubmit={salvarConfiguracoesAdministrativas}
-                      >
-                        <label>
-                          Cobrar justificativa as
-                          <input
-                            type="time"
-                            name="horarioJustificativa"
-                            value={configuracoesSistema.horarioJustificativa}
-                            onChange={atualizarCampoConfiguracoesSistema}
-                          />
-                        </label>
-
-                        <button type="submit" className="btn-secondary">
-                          Salvar horario
-                        </button>
-                      </form>
-
-                      {erroConfiguracoesSistema && (
-                        <p className="form-error">{erroConfiguracoesSistema}</p>
-                      )}
-                    </article>
-                    )}
-
-
-                    {podeGerarLinks && (
-                    <article className="settings-card">
-                      <div className="settings-card-title">
-                        <Settings size={20} />
-                        <strong>Acesso temporario</strong>
-                      </div>
-
-                      <p>
-                        Gere links de acesso enquanto a autenticacao definitiva
-                        ainda nao entra no sistema.
-                      </p>
-
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() => setModalAcessoAberto(true)}
-                      >
-                        Gerar link
-                      </button>
-                    </article>
-                    )}
-
-                    <GerenciadorCampos aoPedirConfirmacao={setConfirmacao} />
-                  </div>
-                </section>
-              </section>
-            )}
 
             {abaAtiva === "produtos" && (
               <PaginaProdutos aoPedirConfirmacao={setConfirmacao} />
             )}
 
-            {usuarioAdmin && abaAtiva === "equipe" && <PaginaEquipe />}
+            {usuarioAdmin && abaAtiva === "equipe" && (
+              <PaginaEquipe aoGerarLink={() => setModalAcessoAberto(true)} />
+            )}
 
             {usuarioAdmin && abaAtiva === "auditoria" && (
               <PaginaAuditoria produtos={produtos} />
@@ -3822,6 +3694,8 @@ function App() {
                   aoMudar={setPersonalizadosProduto}
                   podeCriar={ehSuperAdmin}
                   aoCriarCampo={() => setCriandoCampoEstoque(true)}
+                  aoEditarCampo={setEditandoCampoEstoque}
+                  aoGerenciarCampos={() => setGerenciandoCamposEstoque(true)}
                 />
 
                 {erro && <p className="form-error">{erro}</p>}

@@ -1,4 +1,4 @@
-import {
+﻿import {
   Crown,
   Eye,
   EyeOff,
@@ -22,6 +22,7 @@ import {
   rotuloPapel,
 } from "../config/security";
 import { useAuth } from "../contexts/useAuth";
+import AjustesDoSistema from "./AjustesDoSistema";
 import { traduzirErro } from "../lib/mensagensErro";
 import {
   acompanharUsuarios,
@@ -139,7 +140,7 @@ function ModalPermissoes({ titulo, descricao, valor, salvando, aoConfirmar, aoFe
   );
 }
 
-export default function PaginaEquipe() {
+export default function PaginaEquipe({ aoGerarLink }) {
   const { perfil, ehSuperAdmin, usuario } = useAuth();
   const [usuarios, setUsuarios] = useState([]);
   const [formulario, setFormulario] = useState(formularioInicial);
@@ -353,7 +354,7 @@ export default function PaginaEquipe() {
                     <span className="senha-temporaria">
                       Senha temporaria:{" "}
                       <code>
-                        {senhasVisiveis[membro.uid] ? membro.temporaryPassword : "••••••••"}
+                        {senhasVisiveis[membro.uid] ? membro.temporaryPassword : "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"}
                       </code>
                       <button
                         type="button"
@@ -481,6 +482,8 @@ export default function PaginaEquipe() {
           })}
         </div>
       </section>
+
+      <AjustesDoSistema aoGerarLink={aoGerarLink} />
 
       {cadastroPendente && (
         <ModalPermissoes

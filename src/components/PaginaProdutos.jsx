@@ -10,6 +10,7 @@ import {
 import { useCampos } from "../hooks/useCampos";
 import CamposPersonalizados, { ListaCamposPersonalizados } from "./CamposPersonalizados";
 import ModalCampo from "./ModalCampo";
+import ModalGerenciarCampos from "./GerenciadorCampos";
 import { converterImagemParaWebp } from "../lib/imagem";
 import { traduzirErro } from "../lib/mensagensErro";
 import { criarLogAuditoria } from "../services/auditService";
@@ -37,6 +38,8 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [criandoCampo, setCriandoCampo] = useState(false);
+  const [editandoCampo, setEditandoCampo] = useState(null);
+  const [gerenciandoCampos, setGerenciandoCampos] = useState(false);
   const [personalizados, setPersonalizados] = useState({});
 
   // Aluno ve a vitrine; escrever depende da permissao de produtos.
@@ -357,6 +360,8 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
                 aoMudar={setPersonalizados}
                 podeCriar={ehSuperAdmin}
                 aoCriarCampo={() => setCriandoCampo(true)}
+                aoEditarCampo={setEditandoCampo}
+                aoGerenciarCampos={() => setGerenciandoCampos(true)}
               />
 
               {erro && <p className="form-error">{erro}</p>}
@@ -380,8 +385,23 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
         </div>
       )}
 
-      {criandoCampo && (
-        <ModalCampo contexto="catalogo" aoFechar={() => setCriandoCampo(false)} />
+      {(criandoCampo || editandoCampo) && (
+        <ModalCampo
+          contexto="catalogo"
+          campo={editandoCampo}
+          aoFechar={() => {
+            setCriandoCampo(false);
+            setEditandoCampo(null);
+          }}
+        />
+      )}
+
+      {gerenciandoCampos && (
+        <ModalGerenciarCampos
+          contexto="catalogo"
+          aoPedirConfirmacao={aoPedirConfirmacao}
+          aoFechar={() => setGerenciandoCampos(false)}
+        />
       )}
     </section>
   );

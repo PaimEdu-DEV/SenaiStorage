@@ -823,3 +823,14 @@ input:-webkit-autofill:focus {
 
 /* Modal que abre sobre outro modal (criar campo durante o cadastro). */
 .usage-overlay.usage-overlay-topo { z-index: 140; }
+
+/* Acoes no cabecalho e no titulo de cada campo. */
+.campos-cabecalho-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.campo-titulo-acoes { display: inline-flex; align-items: center; gap: 6px; }
+.campo-editar { width: 24px; height: 24px; border: 0; background: transparent; }
+.campo-editar:hover { background: var(--surface-soft); color: var(--text); }
+
+/* Gerenciador de campos aberto de dentro do formulario. */
+.gerenciar-campos-modal { width: min(900px, 100%); }
+.lista-campos-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.lista-campos-topo .field-hint { margin: 0; }

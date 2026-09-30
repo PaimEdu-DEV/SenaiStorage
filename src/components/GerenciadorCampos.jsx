@@ -7,6 +7,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
 import { useState } from "react";
 import { CONTEXTOS, TIPOS_CAMPO } from "../config/campos";
@@ -24,9 +25,9 @@ function nomeTipo(tipo) {
   return TIPOS_CAMPO.find((item) => item.id === tipo)?.titulo || tipo;
 }
 
-function ListaDeCampos({ contexto, aoPedirConfirmacao }) {
+export function ListaDeCampos({ contexto, aoPedirConfirmacao }) {
   const { perfil } = useAuth();
-  const { todos, erro: erroCarga } = useCampos(contexto, { ehAdmin: true });
+  const { todos } = useCampos(contexto, { ehAdmin: true });
   const [editando, setEditando] = useState(null);
   const [criando, setCriando] = useState(false);
   const [erro, setErro] = useState("");
@@ -50,9 +51,9 @@ function ListaDeCampos({ contexto, aoPedirConfirmacao }) {
   }
 
   return (
-    <article className="settings-card settings-card-wide">
-      <div className="settings-card-title">
-        <strong>{CONTEXTOS[contexto].titulo}</strong>
+    <div className="lista-campos">
+      <div className="lista-campos-topo">
+        <p className="field-hint">{CONTEXTOS[contexto].descricao}</p>
 
         <button type="button" className="btn-secondary" onClick={() => setCriando(true)}>
           <Plus size={15} />
@@ -60,9 +61,7 @@ function ListaDeCampos({ contexto, aoPedirConfirmacao }) {
         </button>
       </div>
 
-      <p>{CONTEXTOS[contexto].descricao}</p>
-
-      {(erro || erroCarga) && <p className="form-error">{erro || erroCarga}</p>}
+      {erro && <p className="form-error">{erro}</p>}
 
       <div className="admin-panel-table campos-table">
         <div className="admin-panel-row admin-panel-head">
@@ -151,7 +150,7 @@ function ListaDeCampos({ contexto, aoPedirConfirmacao }) {
                   className="icon-button delete"
                   title="Excluir campo"
                   onClick={() =>
-                    aoPedirConfirmacao({
+                    aoPedirConfirmacao?.({
                       titulo: "Excluir campo",
                       descricao: `O campo '${campo.rotulo}' sera removido do formulario. Os valores ja preenchidos nos produtos continuam gravados, mas deixam de aparecer na tela.`,
                       rotuloAcao: "Excluir campo",
@@ -177,19 +176,40 @@ function ListaDeCampos({ contexto, aoPedirConfirmacao }) {
           }}
         />
       )}
-    </article>
+    </div>
   );
 }
 
-export default function GerenciadorCampos({ aoPedirConfirmacao }) {
-  const { ehSuperAdmin } = useAuth();
-
-  if (!ehSuperAdmin) return null;
-
+// Abre a mesma lista em um modal, para gerenciar os campos sem sair do
+// formulario que esta sendo preenchido.
+export default function ModalGerenciarCampos({ contexto, aoFechar, aoPedirConfirmacao }) {
   return (
-    <>
-      <ListaDeCampos contexto="estoque" aoPedirConfirmacao={aoPedirConfirmacao} />
-      <ListaDeCampos contexto="catalogo" aoPedirConfirmacao={aoPedirConfirmacao} />
-    </>
+    <div className="usage-overlay usage-overlay-topo" role="dialog" aria-modal="true">
+      <div className="usage-modal gerenciar-campos-modal">
+        <div className="usage-header">
+          <div>
+            <span>{CONTEXTOS[contexto].titulo}</span>
+            <h2>Gerenciar campos</h2>
+          </div>
+
+          <button
+            type="button"
+            className="close-modal"
+            onClick={aoFechar}
+            aria-label="Fechar"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <ListaDeCampos contexto={contexto} aoPedirConfirmacao={aoPedirConfirmacao} />
+
+        <div className="form-actions">
+          <button type="button" className="btn-primary" onClick={aoFechar}>
+            Concluir
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

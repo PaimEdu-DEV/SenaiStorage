@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Plus } from "lucide-react";
+import { Eye, EyeOff, Pencil, Plus, SlidersHorizontal } from "lucide-react";
 import { formatarValorCampo } from "../config/campos";
 
 // Inputs dos campos criados pelo admin. O componente nao sabe de produto:
@@ -8,6 +8,8 @@ export default function CamposPersonalizados({
   valores = {},
   aoMudar,
   aoCriarCampo,
+  aoEditarCampo,
+  aoGerenciarCampos,
   podeCriar = false,
 }) {
   if (campos.length === 0 && !podeCriar) return null;
@@ -22,10 +24,22 @@ export default function CamposPersonalizados({
         <span>Campos adicionais</span>
 
         {podeCriar && (
-          <button type="button" className="btn-secondary" onClick={aoCriarCampo}>
-            <Plus size={15} />
-            Novo campo
-          </button>
+          <span className="campos-cabecalho-acoes">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={aoGerenciarCampos}
+              title="Renomear, reordenar, ocultar ou excluir campos"
+            >
+              <SlidersHorizontal size={15} />
+              Gerenciar campos
+            </button>
+
+            <button type="button" className="btn-secondary" onClick={aoCriarCampo}>
+              <Plus size={15} />
+              Novo campo
+            </button>
+          </span>
         )}
       </div>
 
@@ -46,15 +60,30 @@ export default function CamposPersonalizados({
               >
                 <span className="campo-titulo">
                   {campo.rotulo}
-                  {campo.visivelParaAluno === false ? (
-                    <span className="campo-selo" title="Oculto para o aluno">
-                      <EyeOff size={12} /> interno
-                    </span>
-                  ) : (
-                    <span className="campo-selo visivel" title="Visivel para o aluno">
-                      <Eye size={12} /> aluno ve
-                    </span>
-                  )}
+
+                  <span className="campo-titulo-acoes">
+                    {campo.visivelParaAluno === false ? (
+                      <span className="campo-selo" title="Oculto para o aluno">
+                        <EyeOff size={12} /> interno
+                      </span>
+                    ) : (
+                      <span className="campo-selo visivel" title="Visivel para o aluno">
+                        <Eye size={12} /> aluno ve
+                      </span>
+                    )}
+
+                    {podeCriar && (
+                      <button
+                        type="button"
+                        className="icon-button campo-editar"
+                        onClick={() => aoEditarCampo(campo)}
+                        title={`Editar o campo ${campo.rotulo}`}
+                        aria-label={`Editar o campo ${campo.rotulo}`}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    )}
+                  </span>
                 </span>
 
                 {campo.tipo === "textoLongo" && (
