@@ -26,10 +26,6 @@ import { withTimeout } from "./timeout";
 
 const COLECAO_ADMINS = "admins";
 
-// Semente do primeiro acesso do Owner. O sistema obriga a troca imediata,
-// entao esta senha so funciona uma unica vez, para criar a conta raiz.
-const SENHA_SEMENTE_OWNER = "1234567";
-
 export const EMAIL_OWNER = OWNER_EMAIL;
 
 export function ehOwner(perfil) {
@@ -85,10 +81,9 @@ export async function buscarPerfilAdmin(uid) {
   return { uid, ...snapshot.data() };
 }
 
-// `comSenhaSemente` distingue os dois caminhos: a conta criada agora pela
-// senha semente precisa troca-la; uma conta que ja existia no Authentication
-// tem senha propria e nao deve ser forcada a nada.
-function perfilOwnerInicial({ comSenhaSemente }) {
+// A senha do Owner e a que ele mesmo escolhe no primeiro login, entao a conta
+// ja nasce definitiva, sem senha temporaria a trocar.
+function perfilOwnerInicial() {
   const agora = Date.now();
 
   return {
@@ -97,8 +92,8 @@ function perfilOwnerInicial({ comSenhaSemente }) {
     email: OWNER_EMAIL.toLowerCase(),
     role: OWNER_ROLE,
     active: true,
-    mustChangePassword: comSenhaSemente,
-    temporaryPassword: comSenhaSemente ? SENHA_SEMENTE_OWNER : null,
+    mustChangePassword: false,
+    temporaryPassword: null,
     bootstrap: true,
     criadoEm: agora,
     createdAt: agora,
@@ -106,19 +101,11 @@ function perfilOwnerInicial({ comSenhaSemente }) {
   };
 }
 
+// Primeiro acesso em um banco vazio: o e-mail do Owner e fixo no sistema e a
+// senha digitada aqui vira a senha definitiva da conta raiz.
 async function criarOwnerInicial(email, senha) {
-  const ehEmailDoOwner = email.toLowerCase() === OWNER_EMAIL.toLowerCase();
-
-  if (!ehEmailDoOwner) {
+  if (email.toLowerCase() !== OWNER_EMAIL.toLowerCase()) {
     throw new Error("E-mail ou senha incorretos.");
-  }
-
-  // O e-mail confere, mas a senha nao e a semente: provavelmente um banco
-  // novo, onde a conta ainda nao existe e so a semente cria o Owner.
-  if (senha !== SENHA_SEMENTE_OWNER) {
-    throw new Error(
-      "A conta do Owner ainda nao existe neste banco. Entre com a senha inicial do sistema para cria-la e defina a sua senha em seguida.",
-    );
   }
 
   let credencial;
@@ -129,14 +116,15 @@ async function criarOwnerInicial(email, senha) {
     );
   } catch (error) {
     if (error.code === "auth/email-already-in-use") {
-      throw new Error(
-        "Este e-mail ja existe na autenticacao. Use a senha correta ou fale com o administrador.",
-      );
+      throw new Error("Senha incorreta para a conta do Owner.");
+    }
+    if (error.code === "auth/weak-password") {
+      throw new Error("A senha precisa ter pelo menos 6 caracteres.");
     }
     throw error;
   }
 
-  const perfil = perfilOwnerInicial({ comSenhaSemente: true });
+  const perfil = perfilOwnerInicial();
   await withTimeout(
     setDoc(adminRef(credencial.user.uid), perfil),
     "Administrador criado, mas o Firestore recusou salvar o perfil. Confira as regras.",
@@ -173,7 +161,7 @@ export async function entrarComoAdmin(email, senha) {
     // Conta existe na autenticacao mas perdeu o documento: so o Owner e recriado.
     if (emailUsuario === OWNER_EMAIL.toLowerCase()) {
       // A conta ja existia no Authentication com senha propria.
-      const perfilOwner = perfilOwnerInicial({ comSenhaSemente: false });
+      const perfilOwner = perfilOwnerInicial();
       await setDoc(adminRef(credencial.user.uid), perfilOwner);
       return { uid: credencial.user.uid, ...perfilOwner };
     }
