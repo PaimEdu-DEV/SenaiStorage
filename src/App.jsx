@@ -14,6 +14,8 @@ import {
   GraduationCap,
   History,
   LayoutDashboard,
+  LogIn,
+  LogOut,
   Moon,
   PackagePlus,
   PackageSearch,
@@ -50,6 +52,13 @@ import {
   salvarConfiguracoesSistema,
 } from "./crud";
 import { firebaseConfigurado } from "./firebaseconfig";
+import { rotuloPapel } from "./config/security";
+import { useAuth } from "./contexts/useAuth";
+import AcessoRevogadoModal from "./components/AcessoRevogadoModal";
+import LoginModal from "./components/LoginModal";
+import PainelBackups from "./components/PainelBackups";
+import PainelUsuarios from "./components/PainelUsuarios";
+import PrimeiroAcessoModal from "./components/PrimeiroAcessoModal";
 import senaiLogo from "./assets/senai-logo.png";
 
 const formularioInicial = {
@@ -317,7 +326,9 @@ function App() {
   const [menuLateralAberto, setMenuLateralAberto] = useState(
     () => window.matchMedia("(min-width: 761px)").matches,
   );
-  const [perfilSistema, setPerfilSistema] = useState(perfilAdmin);
+  // Sem login o sistema comeca no modo aluno; so o login libera o modo professor.
+  const [perfilSistema, setPerfilSistema] = useState(perfilAluno);
+  const [loginAberto, setLoginAberto] = useState(false);
   const [produtosFinais, setProdutosFinais] = useState([]);
   const [formProdutoFinal, setFormProdutoFinal] = useState(produtoFinalInicial);
   const [configuracoesSistema, setConfiguracoesSistema] = useState(
@@ -376,7 +387,16 @@ function App() {
   });
   const [agora, setAgora] = useState(new Date());
   const tokenAcesso = new URLSearchParams(window.location.search).get("acesso");
-  const usuarioAdmin = perfilSistema === perfilAdmin;
+  const {
+    perfil: perfilAutenticado,
+    ehAdmin,
+    ehSuperAdmin,
+    precisaTrocarSenha,
+    acessoRevogado,
+    sair,
+  } = useAuth();
+  // Modo professor exige login valido: o botao de perfil sozinho nao concede acesso.
+  const usuarioAdmin = ehAdmin && perfilSistema === perfilAdmin;
 
   const produtosPrincipal = produtos.filter(
     (produto) => obterTipoEstoqueProduto(produto) === estoquePrincipal,
@@ -517,6 +537,20 @@ function App() {
 
     return Math.max(0, Number((totais.retirado - totais.devolvido).toFixed(2)));
   }
+
+  // Mantem o modo do sistema alinhado com a sessao: entrou vira professor,
+  // saiu (ou perdeu o acesso) volta para aluno.
+  useEffect(() => {
+    if (ehAdmin) {
+      setPerfilSistema(perfilAdmin);
+      return;
+    }
+
+    setPerfilSistema(perfilAluno);
+    setAbaAtiva((abaAtual) =>
+      ["admin", "principal", "movimentacoes"].includes(abaAtual) ? "painel" : abaAtual,
+    );
+  }, [ehAdmin]);
 
   useEffect(() => {
     const pararDeOuvirProdutos = listarProdutos(setProdutos, (error) => {
@@ -855,6 +889,12 @@ function App() {
   }
 
   function trocarPerfilSistema(novoPerfil) {
+    // Entrar como professor passa pelo login; sem sessao valida, abre o modal.
+    if (novoPerfil === perfilAdmin && !ehAdmin) {
+      setLoginAberto(true);
+      return;
+    }
+
     setPerfilSistema(novoPerfil);
 
     if (
@@ -1806,9 +1846,27 @@ function App() {
     },
   ];
 
+  // Avisos que bloqueiam o painel antes de qualquer tela do sistema.
+  if (acessoRevogado) {
+    return (
+      <div className={modoEscuro ? "app dark-mode" : "app"}>
+        <AcessoRevogadoModal />
+      </div>
+    );
+  }
+
+  if (ehAdmin && precisaTrocarSenha) {
+    return (
+      <div className={modoEscuro ? "app dark-mode" : "app"}>
+        <PrimeiroAcessoModal />
+      </div>
+    );
+  }
+
   if (!tokenAcesso && mostrarTelaInicial) {
     return (
       <div className={modoEscuro ? "app dark-mode" : "app"}>
+        <LoginModal aberto={loginAberto} aoFechar={() => setLoginAberto(false)} />
         <main className="intro-screen">
           <section
             className={
@@ -2022,6 +2080,7 @@ function App() {
   if (!tokenAcesso && !mostrarTelaInicial) {
     return (
       <div className={modoEscuro ? "app dark-mode" : "app"}>
+        <LoginModal aberto={loginAberto} aoFechar={() => setLoginAberto(false)} />
         <div
           className={
             menuLateralAberto
@@ -2130,8 +2189,32 @@ function App() {
               <div className="system-header-actions">
                 <span className={usuarioAdmin ? "profile-pill admin" : "profile-pill student"}>
                   {usuarioAdmin ? <ShieldCheck size={16} /> : <GraduationCap size={16} />}
-                  {usuarioAdmin ? "Professor" : "Aluno"}
+                  {usuarioAdmin
+                    ? `${perfilAutenticado?.nome || "Professor"} - ${rotuloPapel(perfilAutenticado)}`
+                    : "Aluno"}
                 </span>
+
+                {ehAdmin ? (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={sair}
+                    title="Encerrar sessao"
+                  >
+                    <LogOut size={16} />
+                    Sair
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setLoginAberto(true)}
+                    title="Entrar como professor"
+                  >
+                    <LogIn size={16} />
+                    Entrar
+                  </button>
+                )}
               </div>
             </header>
 
@@ -2770,8 +2853,9 @@ function App() {
                       </div>
 
                       <p>
-                        Controle temporario ate o login real ser conectado pelo
-                        projeto.
+                        Sessao ativa de {perfilAutenticado?.nome || "usuario"} (
+                        {perfilAutenticado?.email}) como{" "}
+                        {rotuloPapel(perfilAutenticado)}.
                       </p>
 
                       <div className="role-switch">
@@ -2946,7 +3030,18 @@ function App() {
                         Gerar link
                       </button>
                     </article>
+
+                    <PainelUsuarios />
+
+                    <PainelBackups />
                   </div>
+
+                  {!ehSuperAdmin && (
+                    <p className="field-hint">
+                      A gestao de usuarios e os backups sao exclusivos de Super
+                      Admins.
+                    </p>
+                  )}
                 </section>
               </section>
             )}

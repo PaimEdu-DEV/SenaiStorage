@@ -2,10 +2,122 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Regra temporaria para o prototipo sem autenticacao.
-    // Trocar por regras por perfil quando o login for implementado.
-    match /{document=**} {
-      allow read, write: if true;
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    function docAdmin() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function ehAdmin() {
+      return autenticado()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && docAdmin().data.active != false
+        && docAdmin().data.adminAccessRevoked != true
+        && docAdmin().data.role in ['admin', 'superadmin', 'owner'];
+    }
+
+    function ehSuperAdmin() {
+      return ehAdmin() && docAdmin().data.role in ['superadmin', 'owner'];
+    }
+
+    function ehOwner() {
+      return ehAdmin() && docAdmin().data.role == 'owner';
+    }
+
+    // O Owner e intocavel: ninguem altera nem remove o documento dele.
+    function alvoEhOwner(adminId) {
+      return exists(/databases/$(database)/documents/admins/$(adminId))
+        && get(/databases/$(database)/documents/admins/$(adminId)).data.role == 'owner';
+    }
+
+    // Estoque: alunos leem, somente professores escrevem.
+    match /produtos/{produtoId} {
+      allow read: if true;
+      allow create, update, delete: if ehAdmin();
+    }
+
+    match /produtosFinais/{produtoFinalId} {
+      allow read: if true;
+      allow create, update, delete: if ehAdmin();
+    }
+
+    match /historicoMovimentacoes/{movimentacaoId} {
+      allow read: if true;
+      allow create, update: if ehAdmin();
+      allow delete: if ehSuperAdmin();
+    }
+
+    // Alunos precisam registrar e acompanhar as proprias justificativas.
+    match /justificativas/{justificativaId} {
+      allow read, create, update: if true;
+      allow delete: if ehAdmin();
+    }
+
+    match /configuracoes/{configuracaoId} {
+      allow read: if true;
+      allow write: if ehAdmin();
+    }
+
+    match /linksAcesso/{token} {
+      allow read: if true;
+      allow create, update, delete: if ehAdmin();
+    }
+
+    match /admins/{adminId} {
+      // Todo usuario logado le o proprio perfil: sem isso o primeiro acesso
+      // trava, porque o documento ainda nao existe na hora do login.
+      allow read: if ehAdmin() || (autenticado() && request.auth.uid == adminId);
+
+      // Criacao: o proprio usuario registrando sua conta raiz de Owner, ou um
+      // Super Admin cadastrando um novo professor/super admin.
+      allow create: if (
+        autenticado()
+        && request.auth.uid == adminId
+        && request.resource.data.role == 'owner'
+      ) || (
+        ehSuperAdmin()
+        && request.resource.data.role in ['admin', 'superadmin']
+      );
+
+      // O proprio usuario so pode encerrar o primeiro acesso (trocar a senha).
+      allow update: if (
+        autenticado()
+        && request.auth.uid == adminId
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['mustChangePassword', 'temporaryPassword', 'updatedAt',
+                       'adminRevocationNoticePending'])
+      ) || (
+        ehSuperAdmin() && !alvoEhOwner(adminId)
+      ) || (
+        ehOwner() && request.auth.uid == adminId
+      );
+
+      // O Owner pode remover o proprio documento durante uma restauracao.
+      allow delete: if (ehSuperAdmin() && !alvoEhOwner(adminId)) || ehOwner();
+    }
+
+    // Auditoria: somente leitura administrativa, sem edicao nem exclusao.
+    match /logs/{logId} {
+      allow read: if ehAdmin();
+      allow create: if autenticado();
+      allow update: if false;
+      // Exclusao so acontece durante uma restauracao feita pelo Owner.
+      allow delete: if ehOwner();
+    }
+
+    // Backups: criacao por Super Admin, restauracao/limpeza pelo Owner.
+    match /backups/{backupId} {
+      allow read, create: if ehSuperAdmin();
+      allow update: if false;
+      // Rotacao de retencao e limpeza de backups antigos.
+      allow delete: if ehSuperAdmin();
+    }
+
+    match /systemProtection/{documentoId} {
+      allow read: if ehAdmin();
+      allow write: if ehSuperAdmin();
     }
   }
 }
