@@ -9,6 +9,7 @@ import {
   ClipboardList,
   Clock,
   Container,
+  DatabaseBackup,
   Filter,
   FlaskConical,
   GraduationCap,
@@ -21,12 +22,14 @@ import {
   PackageSearch,
   Pencil,
   RulerDimensionLine,
+  ScrollText,
   Search,
   Send,
   Settings,
   ShieldCheck,
   Sun,
   Trash2,
+  Users,
   Warehouse,
   X,
 } from "lucide-react";
@@ -52,13 +55,14 @@ import {
   salvarConfiguracoesSistema,
 } from "./crud";
 import { firebaseConfigurado } from "./firebaseconfig";
-import { rotuloPapel } from "./config/security";
+import { podeFazer, rotuloPapel } from "./config/security";
 import { traduzirErro } from "./lib/mensagensErro";
 import { useAuth } from "./contexts/useAuth";
 import AcessoRevogadoModal from "./components/AcessoRevogadoModal";
 import LoginModal from "./components/LoginModal";
 import PainelBackups from "./components/PainelBackups";
-import PainelUsuarios from "./components/PainelUsuarios";
+import PaginaAuditoria from "./components/PaginaAuditoria";
+import PaginaEquipe from "./components/PaginaEquipe";
 import PrimeiroAcessoModal from "./components/PrimeiroAcessoModal";
 import senaiLogo from "./assets/senai-logo.png";
 
@@ -549,7 +553,7 @@ function App() {
 
     setPerfilSistema(perfilAluno);
     setAbaAtiva((abaAtual) =>
-      ["admin", "principal", "movimentacoes"].includes(abaAtual) ? "painel" : abaAtual,
+      ["admin", "equipe", "auditoria", "backups", "principal", "movimentacoes"].includes(abaAtual) ? "painel" : abaAtual,
     );
   }, [ehAdmin]);
 
@@ -873,7 +877,7 @@ function App() {
   }
 
   function trocarAba(id) {
-    const abasRestritasAluno = ["admin", "principal", "movimentacoes"];
+    const abasRestritasAluno = ["admin", "equipe", "auditoria", "backups", "principal", "movimentacoes"];
 
     if (!usuarioAdmin && abasRestritasAluno.includes(id)) {
       setAbaAtiva("painel");
@@ -900,7 +904,7 @@ function App() {
 
     if (
       novoPerfil === perfilAluno &&
-      ["admin", "principal", "movimentacoes"].includes(abaAtiva)
+      ["admin", "equipe", "auditoria", "backups", "principal", "movimentacoes"].includes(abaAtiva)
     ) {
       setProdutoEditandoId(null);
       setFormulario(formularioInicial);
@@ -1774,14 +1778,43 @@ function App() {
       somenteAdmin: true,
     },
     {
+      id: "equipe",
+      titulo: "Equipe",
+      descricao: "Quem tem acesso e o que pode fazer.",
+      icone: Users,
+      somenteAdmin: true,
+      somenteSuperAdmin: true,
+    },
+    {
+      id: "auditoria",
+      titulo: "Auditoria",
+      descricao: "Registro de atividades e relatorios.",
+      icone: ScrollText,
+      somenteAdmin: true,
+      permissao: "auditoria.ver",
+    },
+    {
+      id: "backups",
+      titulo: "Backups",
+      descricao: "Copias de seguranca do sistema.",
+      icone: DatabaseBackup,
+      somenteAdmin: true,
+      somenteSuperAdmin: true,
+    },
+    {
       id: "admin",
-      titulo: "Admin",
-      descricao: "Configuracoes administrativas.",
+      titulo: "Configuracoes",
+      descricao: "Ajustes gerais do sistema.",
       icone: Settings,
       somenteAdmin: true,
     },
   ];
-  const abasVisiveis = abasSistema.filter((aba) => usuarioAdmin || !aba.somenteAdmin);
+  const abasVisiveis = abasSistema.filter((aba) => {
+    if (aba.somenteAdmin && !usuarioAdmin) return false;
+    if (aba.somenteSuperAdmin && !ehSuperAdmin) return false;
+    if (aba.permissao && !podeFazer(perfilAutenticado, aba.permissao)) return false;
+    return true;
+  });
   const abaAtual =
     abasVisiveis.find((aba) => aba.id === abaAtiva) || abasVisiveis[0];
   const produtosComEstoqueBaixo = produtosPrincipal.filter(
@@ -3031,18 +3064,23 @@ function App() {
                         Gerar link
                       </button>
                     </article>
+                  </div>
+                </section>
+              </section>
+            )}
 
-                    <PainelUsuarios />
+            {usuarioAdmin && abaAtiva === "equipe" && <PaginaEquipe />}
 
+            {usuarioAdmin && abaAtiva === "auditoria" && (
+              <PaginaAuditoria produtos={produtos} />
+            )}
+
+            {usuarioAdmin && abaAtiva === "backups" && (
+              <section className="tab-page">
+                <section className="form-container">
+                  <div className="settings-grid">
                     <PainelBackups />
                   </div>
-
-                  {!ehSuperAdmin && (
-                    <p className="field-hint">
-                      A gestao de usuarios e os backups sao exclusivos de Super
-                      Admins.
-                    </p>
-                  )}
                 </section>
               </section>
             )}

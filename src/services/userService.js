@@ -20,6 +20,7 @@ import {
   OWNER_ROLE,
   isOwner,
   nomePerfil,
+  permissoesPadrao,
 } from "../config/security";
 import { criarLogAuditoria } from "./auditService";
 import { withTimeout } from "./timeout";
@@ -194,7 +195,10 @@ export async function sairDaConta() {
 
 // Criacao de usuario pelo super admin: gera a conta em um app secundario para
 // nao derrubar a sessao atual e marca senha temporaria de primeiro acesso.
-export async function criarUsuario({ nome, email, senha, role }, perfilAtuante) {
+export async function criarUsuario(
+  { nome, email, senha, role, permissoes },
+  perfilAtuante,
+) {
   requireFirebase();
 
   const emailNormalizado = email.trim().toLowerCase();
@@ -239,6 +243,7 @@ export async function criarUsuario({ nome, email, senha, role }, perfilAtuante) 
         name: nome,
         email: emailNormalizado,
         role,
+        permissoes: permissoes || permissoesPadrao(),
         active: true,
         adminAccessRevoked: false,
         adminRevocationNoticePending: false,
@@ -291,6 +296,7 @@ export async function criarUsuario({ nome, email, senha, role }, perfilAtuante) 
         name: nome,
         email: emailNormalizado,
         role,
+        permissoes: permissoes || permissoesPadrao(),
         active: true,
         mustChangePassword: true,
         temporaryPassword: senha,
@@ -370,6 +376,32 @@ export async function atualizarUsuario(uid, dados, perfilAtuante, anterior = nul
     description: descricao,
     before: anterior,
     after: dados,
+  }).catch(() => {});
+}
+
+export async function salvarPermissoes(uid, permissoes, perfilAtuante, anterior = null) {
+  requireFirebase();
+  await garantirAlvoNaoOwner(
+    anterior,
+    perfilAtuante,
+    "Tentativa bloqueada de alterar as permissoes do Owner.",
+  );
+
+  await updateDoc(adminRef(uid), { permissoes, updatedAt: Date.now() });
+
+  const liberadas = Object.entries(permissoes)
+    .filter(([, ativo]) => ativo)
+    .map(([chave]) => chave);
+
+  await criarLogAuditoria(perfilAtuante, {
+    action: "PERMISSION_UPDATE",
+    entity: "user",
+    entityId: uid,
+    description: `Permissoes de ${nomePerfil(anterior)} atualizadas: ${
+      liberadas.length ? liberadas.join(", ") : "nenhuma permissao liberada"
+    }.`,
+    before: anterior?.permissoes || null,
+    after: permissoes,
   }).catch(() => {});
 }
 

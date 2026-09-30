@@ -49,6 +49,58 @@ export function hasAdminAccess(perfil) {
   );
 }
 
+// Permissoes granulares. Owner e Super Admin tem todas por definicao; o
+// professor comum recebe apenas o que for marcado no painel de Equipe.
+export const PERMISSOES = [
+  {
+    grupo: "Estoque",
+    itens: [
+      { chave: "produtos.criar", titulo: "Cadastrar produtos", padrao: true },
+      { chave: "produtos.editar", titulo: "Editar produtos", padrao: true },
+      { chave: "produtos.excluir", titulo: "Excluir produtos", padrao: false },
+      { chave: "estoque.movimentar", titulo: "Registrar uso e retirada", padrao: true },
+      { chave: "estoque.devolver", titulo: "Devolver material", padrao: true },
+    ],
+  },
+  {
+    grupo: "Aulas",
+    itens: [
+      { chave: "justificativas.responder", titulo: "Responder justificativas", padrao: true },
+      { chave: "links.gerar", titulo: "Gerar links de acesso", padrao: false },
+    ],
+  },
+  {
+    grupo: "Sistema",
+    itens: [
+      { chave: "auditoria.ver", titulo: "Ver a auditoria", padrao: false },
+      { chave: "relatorios.exportar", titulo: "Exportar relatorios", padrao: false },
+      { chave: "configuracoes.editar", titulo: "Alterar configuracoes", padrao: false },
+    ],
+  },
+];
+
+export const CHAVES_PERMISSAO = PERMISSOES.flatMap((grupo) =>
+  grupo.itens.map((item) => item.chave),
+);
+
+export function permissoesPadrao() {
+  return Object.fromEntries(
+    PERMISSOES.flatMap((grupo) => grupo.itens).map((item) => [item.chave, item.padrao]),
+  );
+}
+
+// Super Admin e Owner passam por cima da lista: mexem em tudo.
+export function podeFazer(perfil, chave) {
+  if (!hasAdminAccess(perfil)) return false;
+  if (isPrivilegedAdmin(perfil)) return true;
+  return perfil?.permissoes?.[chave] === true;
+}
+
+export function contarPermissoes(perfil) {
+  if (isPrivilegedAdmin(perfil)) return CHAVES_PERMISSAO.length;
+  return CHAVES_PERMISSAO.filter((chave) => perfil?.permissoes?.[chave] === true).length;
+}
+
 export function nomePerfil(perfil) {
   return perfil?.nome || perfil?.name || perfil?.email || "Sistema";
 }
