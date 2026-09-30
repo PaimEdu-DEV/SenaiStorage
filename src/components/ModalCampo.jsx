@@ -48,7 +48,9 @@ export default function ModalCampo({ contexto, campo, aoFechar, aoSalvar }) {
   }
 
   return (
-    <div className="usage-overlay" role="dialog" aria-modal="true">
+    // Abre por cima de outro modal (o cadastro do produto), entao precisa de
+    // uma camada acima da padrao.
+    <div className="usage-overlay usage-overlay-topo" role="dialog" aria-modal="true">
       <div className="usage-modal auth-modal">
         <div className="usage-header">
           <div>

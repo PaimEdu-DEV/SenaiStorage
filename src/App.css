@@ -820,3 +820,6 @@ input:-webkit-autofill:focus {
 .campos-table .role-tag { border: 0; cursor: pointer; }
 .campos-table .role-tag:disabled { cursor: default; opacity: .75; }
 .settings-card-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* Modal que abre sobre outro modal (criar campo durante o cadastro). */
+.usage-overlay.usage-overlay-topo { z-index: 140; }
