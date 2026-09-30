@@ -53,6 +53,7 @@ import {
 } from "./crud";
 import { firebaseConfigurado } from "./firebaseconfig";
 import { rotuloPapel } from "./config/security";
+import { traduzirErro } from "./lib/mensagensErro";
 import { useAuth } from "./contexts/useAuth";
 import AcessoRevogadoModal from "./components/AcessoRevogadoModal";
 import LoginModal from "./components/LoginModal";
@@ -554,7 +555,7 @@ function App() {
 
   useEffect(() => {
     const pararDeOuvirProdutos = listarProdutos(setProdutos, (error) => {
-      setErro(`Erro ao carregar produtos: ${error.message}`);
+      setErro(`Erro ao carregar produtos: ${traduzirErro(error)}`);
     });
 
     return () => pararDeOuvirProdutos();
@@ -565,7 +566,7 @@ function App() {
       setProdutosFinais,
       (error) => {
         setErroProdutoFinal(
-          `Erro ao carregar produtos finais: ${error.message}`,
+          `Erro ao carregar produtos finais: ${traduzirErro(error)}`,
         );
       },
     );
@@ -583,7 +584,7 @@ function App() {
       },
       (error) => {
         setErroConfiguracoesSistema(
-          `Erro ao carregar configuracoes: ${error.message}`,
+          `Erro ao carregar configuracoes: ${traduzirErro(error)}`,
         );
       },
     );
@@ -601,7 +602,7 @@ function App() {
 
   useEffect(() => {
     const pararDeOuvirLinks = listarLinksAcesso(setLinksAcesso, (error) => {
-      setErroLink(`Erro ao carregar links: ${error.message}`);
+      setErroLink(`Erro ao carregar links: ${traduzirErro(error)}`);
     });
 
     return () => pararDeOuvirLinks();
@@ -611,7 +612,7 @@ function App() {
     const pararDeOuvirHistorico = listarMovimentacoes(
       setMovimentacoes,
       (error) => {
-        setErroHistorico(`Erro ao carregar Historico: ${error.message}`);
+        setErroHistorico(`Erro ao carregar Historico: ${traduzirErro(error)}`);
       },
     );
 
@@ -623,7 +624,7 @@ function App() {
       setJustificativas,
       (error) => {
         setErroJustificativaPendente(
-          `Erro ao carregar justificativas: ${error.message}`,
+          `Erro ao carregar justificativas: ${traduzirErro(error)}`,
         );
       },
     );
@@ -672,7 +673,7 @@ function App() {
         setAcessoCliente({
           carregando: false,
           link: null,
-          erro: error.message,
+          erro: traduzirErro(error),
         });
       }
     }
@@ -794,7 +795,7 @@ function App() {
       setFormulario(formularioInicial);
       setModalEntradaAberto(false);
     } catch (error) {
-      setErro(error.message);
+      setErro(traduzirErro(error));
     }
   }
 
@@ -841,7 +842,7 @@ function App() {
           : "Um produto foi excluido do cadastro.",
       });
     } catch (error) {
-      setErro(error.message);
+      setErro(traduzirErro(error));
       return;
     }
 
@@ -1084,7 +1085,7 @@ function App() {
         fotoTamanhoKb: fotoConvertida.tamanhoKb,
       });
     } catch (error) {
-      setErroProdutoFinal(error.message);
+      setErroProdutoFinal(traduzirErro(error));
     }
   }
 
@@ -1124,7 +1125,7 @@ function App() {
       await cadastrarProdutoFinal(novoProdutoFinal);
       setFormProdutoFinal(produtoFinalInicial);
     } catch (error) {
-      setErroProdutoFinal(error.message);
+      setErroProdutoFinal(traduzirErro(error));
     }
   }
 
@@ -1134,7 +1135,7 @@ function App() {
     try {
       await excluirProdutoFinal(id);
     } catch (error) {
-      setErroProdutoFinal(error.message);
+      setErroProdutoFinal(traduzirErro(error));
     }
   }
 
@@ -1145,7 +1146,7 @@ function App() {
     try {
       await salvarConfiguracoesSistema(configuracoesSistema);
     } catch (error) {
-      setErroConfiguracoesSistema(error.message);
+      setErroConfiguracoesSistema(traduzirErro(error));
     }
   }
 
@@ -1173,7 +1174,7 @@ function App() {
         [justificativa.id]: "",
       });
     } catch (error) {
-      setErroJustificativaPendente(error.message);
+      setErroJustificativaPendente(traduzirErro(error));
     }
   }
 
@@ -1318,7 +1319,7 @@ function App() {
 
       fecharRegistroUsoAula();
     } catch (error) {
-      setErroRegistroUso(error.message);
+      setErroRegistroUso(traduzirErro(error));
     }
   }
 
@@ -1407,7 +1408,7 @@ function App() {
         [produto.id]: "",
       });
     } catch (error) {
-      setErroEstoquePequeno(error.message);
+      setErroEstoquePequeno(traduzirErro(error));
     }
   }
 
@@ -1492,7 +1493,7 @@ function App() {
         [produto.id]: "",
       });
     } catch (error) {
-      setErroEstoquePequeno(error.message);
+      setErroEstoquePequeno(traduzirErro(error));
     }
   }
 
@@ -1538,7 +1539,7 @@ function App() {
         [produto.id]: "",
       });
     } catch (error) {
-      setErroFicha(error.message);
+      setErroFicha(traduzirErro(error));
     }
   }
 
@@ -1578,7 +1579,7 @@ function App() {
       setFormularioLink(formularioLinkInicial);
       setLinkCriado(`${window.location.origin}?acesso=${token}`);
     } catch (error) {
-      setErroLink(error.message);
+      setErroLink(traduzirErro(error));
     }
   }
 
@@ -1586,7 +1587,7 @@ function App() {
     try {
       await excluirLinkAcesso(token);
     } catch (error) {
-      setErroLink(error.message);
+      setErroLink(traduzirErro(error));
     }
   }
 
@@ -1707,7 +1708,7 @@ function App() {
             : `${quantidadeRetiradaNumero} ${obterUnidadeProduto(produtoEmUso)} de ${produtoEmUso.nome} foram retirados diretamente do Estoque Principal em modo emergencial.`,
       });
     } catch (error) {
-      setErroUso(error.message);
+      setErroUso(traduzirErro(error));
       return;
     }
 

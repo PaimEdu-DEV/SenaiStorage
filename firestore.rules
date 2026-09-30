@@ -6,30 +6,34 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function docAdmin() {
-      return get(/databases/$(database)/documents/admins/$(request.auth.uid));
+    // Ler um campo inexistente derruba a regra inteira, por isso todo acesso
+    // usa get(campo, padrao): campos como adminAccessRevoked so existem
+    // depois que alguem e revogado.
+    function dadosAdmin() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid)).data;
     }
 
     function ehAdmin() {
       return autenticado()
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-        && docAdmin().data.active != false
-        && docAdmin().data.adminAccessRevoked != true
-        && docAdmin().data.role in ['admin', 'superadmin', 'owner'];
+        && dadosAdmin().get('active', true) != false
+        && dadosAdmin().get('adminAccessRevoked', false) != true
+        && dadosAdmin().get('role', 'public') in ['admin', 'superadmin', 'owner'];
     }
 
     function ehSuperAdmin() {
-      return ehAdmin() && docAdmin().data.role in ['superadmin', 'owner'];
+      return ehAdmin() && dadosAdmin().get('role', 'public') in ['superadmin', 'owner'];
     }
 
     function ehOwner() {
-      return ehAdmin() && docAdmin().data.role == 'owner';
+      return ehAdmin() && dadosAdmin().get('role', 'public') == 'owner';
     }
 
     // O Owner e intocavel: ninguem altera nem remove o documento dele.
     function alvoEhOwner(adminId) {
       return exists(/databases/$(database)/documents/admins/$(adminId))
-        && get(/databases/$(database)/documents/admins/$(adminId)).data.role == 'owner';
+        && get(/databases/$(database)/documents/admins/$(adminId))
+             .data.get('role', 'public') == 'owner';
     }
 
     // Estoque: alunos leem, somente professores escrevem.
