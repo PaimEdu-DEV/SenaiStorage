@@ -53,12 +53,15 @@ import {
   listarProdutos,
   listarProdutosFinais,
   salvarConfiguracoesSistema,
+  unificarProdutosDuplicados,
 } from "./crud";
 import { firebaseConfigurado } from "./firebaseconfig";
 import { podeFazer, rotuloPapel } from "./config/security";
 import { traduzirErro } from "./lib/mensagensErro";
+import { criarLogAuditoria } from "./services/auditService";
 import { useAuth } from "./contexts/useAuth";
 import AcessoRevogadoModal from "./components/AcessoRevogadoModal";
+import ConfirmacaoModal from "./components/ConfirmacaoModal";
 import LoginModal from "./components/LoginModal";
 import PainelBackups from "./components/PainelBackups";
 import PaginaAuditoria from "./components/PaginaAuditoria";
@@ -269,6 +272,16 @@ function obterTipoEstoqueProduto(produto) {
   return produto.tipoEstoque || estoquePrincipal;
 }
 
+// Grava o saldo no campo certo: itens vindos da visao de baldes atualizam
+// quantidadePequeno, o restante atualiza o saldo do pavilhao.
+function atualizarSaldoProduto(produto, novaQuantidade) {
+  const campo = produto.saldoDeBaldes ? "quantidadePequeno" : "quantidadeKg";
+
+  return atualizarProduto(produto.id, {
+    [campo]: Number(Number(novaQuantidade).toFixed(2)),
+  });
+}
+
 function obterConfiguracoesEstoqueProduto(produto) {
   return {
     limiteBaixo:
@@ -334,6 +347,7 @@ function App() {
   // Sem login o sistema comeca no modo aluno; so o login libera o modo professor.
   const [perfilSistema, setPerfilSistema] = useState(perfilAluno);
   const [loginAberto, setLoginAberto] = useState(false);
+  const [confirmacao, setConfirmacao] = useState(null);
   const [produtosFinais, setProdutosFinais] = useState([]);
   const [formProdutoFinal, setFormProdutoFinal] = useState(produtoFinalInicial);
   const [configuracoesSistema, setConfiguracoesSistema] = useState(
@@ -403,12 +417,24 @@ function App() {
   // Modo professor exige login valido: o botao de perfil sozinho nao concede acesso.
   const usuarioAdmin = ehAdmin && perfilSistema === perfilAdmin;
 
+  // Cada produto e um unico documento: quantidadeKg e o saldo do pavilhao e
+  // quantidadePequeno o dos baldes. A lista de baldes e uma visao derivada,
+  // que expoe o saldo pequeno como quantidadeKg para o resto da tela.
   const produtosPrincipal = produtos.filter(
     (produto) => obterTipoEstoqueProduto(produto) === estoquePrincipal,
   );
-  const produtosPequeno = produtos.filter(
-    (produto) => obterTipoEstoqueProduto(produto) === estoquePequeno,
-  );
+  const produtosPequeno = produtos
+    .filter(
+      (produto) =>
+        obterTipoEstoqueProduto(produto) === estoquePrincipal &&
+        Number(produto.quantidadePequeno || 0) > 0,
+    )
+    .map((produto) => ({
+      ...produto,
+      quantidadeKg: Number(produto.quantidadePequeno || 0),
+      tipoEstoque: estoquePequeno,
+      saldoDeBaldes: true,
+    }));
   const produtosFiltradosParaUso = produtosPrincipal.filter((produto) => {
     const busca = buscaProdutoUso.toLowerCase().trim();
     const nome = String(produto.nome || "").toLowerCase();
@@ -545,6 +571,20 @@ function App() {
 
   // Mantem o modo do sistema alinhado com a sessao: entrou vira professor,
   // saiu (ou perdeu o acesso) volta para aluno.
+  // Migracao unica dos produtos que o sistema antigo duplicou entre os dois
+  // estoques. Roda uma vez por sessao administrativa e nao faz nada depois.
+  useEffect(() => {
+    if (!ehAdmin) return;
+
+    unificarProdutosDuplicados()
+      .then(({ fundidos }) => {
+        if (fundidos > 0) {
+          console.info(`Produtos duplicados unificados: ${fundidos}`);
+        }
+      })
+      .catch((error) => console.error(error));
+  }, [ehAdmin]);
+
   useEffect(() => {
     if (ehAdmin) {
       setPerfilSistema(perfilAdmin);
@@ -710,8 +750,16 @@ function App() {
     event.preventDefault();
     setErro("");
 
-    if (!usuarioAdmin) {
-      setErro("Apenas professores/admins podem cadastrar ou atualizar produtos.");
+    const permissaoNecessaria = produtoEditandoId
+      ? "produtos.editar"
+      : "produtos.criar";
+
+    if (!podeFazer(perfilAutenticado, permissaoNecessaria)) {
+      setErro(
+        produtoEditandoId
+          ? "Voce nao tem permissao para editar produtos."
+          : "Voce nao tem permissao para cadastrar produtos.",
+      );
       return;
     }
 
@@ -722,14 +770,19 @@ function App() {
       return;
     }
 
+    const vaiParaBaldes = formulario.tipoEstoque === estoquePequeno;
+    const quantidadeInformada = Number(formulario.quantidadeKg);
+    // O documento e sempre o do produto: o destino apenas escolhe em qual
+    // saldo a quantidade entra, nunca cria um segundo cadastro.
     const produto = {
       nome: formulario.nome.trim(),
       fornecedor: formulario.fornecedor.trim(),
       codigo: formulario.codigo.trim(),
       descricao: formulario.descricao.trim(),
-      quantidadeKg: Number(formulario.quantidadeKg),
+      quantidadeKg: vaiParaBaldes ? 0 : quantidadeInformada,
+      quantidadePequeno: vaiParaBaldes ? quantidadeInformada : 0,
       unidadeMedida: formulario.unidadeMedida,
-      tipoEstoque: formulario.tipoEstoque,
+      tipoEstoque: estoquePrincipal,
       limiteBaixo: Number(formulario.limiteBaixo),
       limiteAtencao: Number(formulario.limiteAtencao),
     };
@@ -741,6 +794,13 @@ function App() {
     try {
       if (produtoEditandoId) {
         await atualizarProduto(produtoEditandoId, produto);
+        await criarLogAuditoria(perfilAutenticado, {
+          action: "UPDATE",
+          entity: "produto",
+          entityId: produtoEditandoId,
+          description: `Produto '${produto.nome}' (${produto.codigo || "sem codigo"}) foi atualizado no cadastro.`,
+          after: produto,
+        }).catch(() => {});
         await cadastrarMovimentacao({
           tipo: "edicao",
           titulo: "Produto editado",
@@ -749,24 +809,28 @@ function App() {
         });
         setProdutoEditandoId(null);
       } else {
-        const produtoJaCadastrado = produtos.find((produtoAtual) => {
-          const mesmoCodigo =
-            normalizarCodigo(produtoAtual.codigo) === normalizarCodigo(produto.codigo);
-          const mesmoEstoque =
-            obterTipoEstoqueProduto(produtoAtual) === produto.tipoEstoque;
-
-          return mesmoCodigo && mesmoEstoque;
-        });
+        // Mesmo codigo e o mesmo produto, independente do destino escolhido.
+        const produtoJaCadastrado = produtos.find(
+          (produtoAtual) =>
+            normalizarCodigo(produtoAtual.codigo) === normalizarCodigo(produto.codigo),
+        );
 
         if (produtoJaCadastrado) {
-          const quantidadeAtual = Number(produtoJaCadastrado.quantidadeKg || 0);
+          const campoSaldo = vaiParaBaldes ? "quantidadePequeno" : "quantidadeKg";
           const novaQuantidade = Number(
-            (quantidadeAtual + produto.quantidadeKg).toFixed(2),
+            (
+              Number(produtoJaCadastrado[campoSaldo] || 0) + quantidadeInformada
+            ).toFixed(2),
           );
 
           await atualizarProduto(produtoJaCadastrado.id, {
             ...produto,
-            quantidadeKg: novaQuantidade,
+            quantidadeKg: vaiParaBaldes
+              ? Number(produtoJaCadastrado.quantidadeKg || 0)
+              : novaQuantidade,
+            quantidadePequeno: vaiParaBaldes
+              ? novaQuantidade
+              : Number(produtoJaCadastrado.quantidadePequeno || 0),
           });
 
           await cadastrarMovimentacao({
@@ -777,21 +841,27 @@ function App() {
               ...produto,
               quantidadeKg: novaQuantidade,
             },
-            quantidadeKg: produto.quantidadeKg,
+            quantidadeKg: quantidadeInformada,
             origem: "Cadastro de produtos",
             destino: destinoSelecionado,
-            descricao: `${produto.quantidadeKg} ${produto.unidadeMedida} foram adicionados ao estoque de ${produto.nome}. Total atual: ${novaQuantidade} ${produto.unidadeMedida}.`,
+            descricao: `${quantidadeInformada} ${produto.unidadeMedida} foram adicionados ao ${destinoSelecionado} de ${produto.nome}. Total no destino: ${novaQuantidade} ${produto.unidadeMedida}.`,
           });
         } else {
           await cadastrarProduto(produto);
+          await criarLogAuditoria(perfilAutenticado, {
+            action: "CREATE",
+            entity: "produto",
+            description: `Produto '${produto.nome}' (${produto.codigo || "sem codigo"}) foi cadastrado com ${quantidadeInformada} ${produto.unidadeMedida} no ${destinoSelecionado}.`,
+            after: produto,
+          }).catch(() => {});
           await cadastrarMovimentacao({
             tipo: "cadastro",
             titulo: "Produto cadastrado",
             produto,
-            quantidadeKg: produto.quantidadeKg,
+            quantidadeKg: quantidadeInformada,
             origem: "Cadastro de produtos",
             destino: destinoSelecionado,
-            descricao: `${produto.nome} foi cadastrado com ${produto.quantidadeKg} ${produto.unidadeMedida}.`,
+            descricao: `${produto.nome} foi cadastrado com ${quantidadeInformada} ${produto.unidadeMedida} no ${destinoSelecionado}.`,
           });
         }
       }
@@ -828,15 +898,36 @@ function App() {
   }
 
   async function removerProduto(id) {
-    if (!usuarioAdmin) {
-      setErro("Apenas professores/admins podem excluir produtos.");
+    if (!podeFazer(perfilAutenticado, "produtos.excluir")) {
+      setErro("Voce nao tem permissao para excluir produtos.");
       return;
     }
 
     const produtoRemovido = produtos.find((produto) => produto.id === id);
 
+    // Exclusao e definitiva: sempre confirma antes, mostrando o que sai.
+    setConfirmacao({
+      titulo: "Excluir produto",
+      descricao: produtoRemovido
+        ? `${produtoRemovido.nome} (${produtoRemovido.codigo || "sem codigo"}) sera removido do cadastro, junto com os saldos do pavilhao e dos baldes. Esta acao nao pode ser desfeita.`
+        : "Este produto sera removido do cadastro. Esta acao nao pode ser desfeita.",
+      rotuloAcao: "Excluir produto",
+      aoConfirmar: () => executarRemocaoProduto(id, produtoRemovido),
+    });
+  }
+
+  async function executarRemocaoProduto(id, produtoRemovido) {
     try {
       await excluirProduto(id);
+      await criarLogAuditoria(perfilAutenticado, {
+        action: "DELETE",
+        entity: "produto",
+        entityId: id,
+        description: produtoRemovido
+          ? `Produto '${produtoRemovido.nome}' (${produtoRemovido.codigo || "sem codigo"}) foi excluido do cadastro.`
+          : "Um produto foi excluido do cadastro.",
+        before: produtoRemovido || null,
+      }).catch(() => {});
       await cadastrarMovimentacao({
         tipo: "exclusao",
         titulo: "Produto excluido",
@@ -1254,9 +1345,7 @@ function App() {
     );
     const justificativaInformada = registroUso.justificativa.trim();
     try {
-      await atualizarProduto(produtoRegistroUso.id, {
-        quantidadeKg: novoEstoquePequeno,
-      });
+      await atualizarSaldoProduto(produtoRegistroUso, novoEstoquePequeno);
 
       if (sobraVoltaParaPrincipal && quantidadeEstoque > 0) {
         if (produtoNoEstoquePrincipal) {
@@ -1362,9 +1451,7 @@ function App() {
     }
 
     try {
-      await atualizarProduto(produto.id, {
-        quantidadeKg: Number((quantidadeDisponivel - quantidadeUtilizada).toFixed(2)),
-      });
+      await atualizarSaldoProduto(produto, quantidadeDisponivel - quantidadeUtilizada);
 
       if (justificativa.valor === "estoque") {
         const produtoNoEstoquePrincipal = produtosPrincipal.find(
@@ -1456,11 +1543,7 @@ function App() {
 
     try {
       if (destinoDevolucao === estoquePrincipal) {
-        await atualizarProduto(produto.id, {
-          quantidadeKg: Number(
-            (quantidadeDisponivel - quantidadeDevolvida).toFixed(2),
-          ),
-        });
+        await atualizarSaldoProduto(produto, quantidadeDisponivel - quantidadeDevolvida);
 
         await atualizarProduto(produtoNoEstoquePrincipal.id, {
           quantidadeKg: Number(
@@ -1525,9 +1608,7 @@ function App() {
     }
 
     try {
-      await atualizarProduto(produto.id, {
-        quantidadeKg: Number(produto.quantidadeKg || 0) + quantidadeDevolvida,
-      });
+      await atualizarSaldoProduto(produto, Number(produto.quantidadeKg || 0) + quantidadeDevolvida);
       await cadastrarMovimentacao({
         tipo: "devolucao",
         titulo: "Quantidade devolvida ao estoque",
@@ -1666,29 +1747,16 @@ function App() {
         quantidadeKg: novoEstoque,
       });
 
+      // Abastecer os baldes so soma no campo do proprio produto: nao existe
+      // mais um segundo documento para o estoque pequeno.
       if (abasteceEstoquePequeno) {
-        const produtoNoEstoquePequeno = produtosPequeno.find(
-          (produto) =>
-            normalizarCodigo(produto.codigo) === normalizarCodigo(produtoEmUso.codigo),
-        );
-
-        if (produtoNoEstoquePequeno) {
-          await atualizarProduto(produtoNoEstoquePequeno.id, {
-            quantidadeKg:
-              Number(produtoNoEstoquePequeno.quantidadeKg || 0) +
-              quantidadeRetiradaNumero,
-          });
-        } else {
-          await cadastrarProduto({
-            nome: produtoEmUso.nome,
-            fornecedor: produtoEmUso.fornecedor,
-            codigo: produtoEmUso.codigo,
-            descricao: produtoEmUso.descricao,
-            quantidadeKg: quantidadeRetiradaNumero,
-            unidadeMedida: obterUnidadeProduto(produtoEmUso),
-            tipoEstoque: estoquePequeno,
-          });
-        }
+        await atualizarProduto(produtoEmUso.id, {
+          quantidadePequeno: Number(
+            (
+              Number(produtoEmUso.quantidadePequeno || 0) + quantidadeRetiradaNumero
+            ).toFixed(2),
+          ),
+        });
       }
 
       await cadastrarMovimentacao({
@@ -1901,6 +1969,7 @@ function App() {
     return (
       <div className={modoEscuro ? "app dark-mode" : "app"}>
         <LoginModal aberto={loginAberto} aoFechar={() => setLoginAberto(false)} />
+        <ConfirmacaoModal pedido={confirmacao} aoFechar={() => setConfirmacao(null)} />
         <main className="intro-screen">
           <section
             className={
@@ -2115,6 +2184,7 @@ function App() {
     return (
       <div className={modoEscuro ? "app dark-mode" : "app"}>
         <LoginModal aberto={loginAberto} aoFechar={() => setLoginAberto(false)} />
+        <ConfirmacaoModal pedido={confirmacao} aoFechar={() => setConfirmacao(null)} />
         <div
           className={
             menuLateralAberto

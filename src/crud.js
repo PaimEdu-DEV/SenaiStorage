@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -303,4 +304,63 @@ export function listarJustificativas(callback, tratarErro) {
       }
     },
   );
+}
+
+// Migracao unica: o sistema antigo criava um segundo documento para o mesmo
+// produto quando ele ia para os baldes, o que duplicava o item na listagem.
+// Agora cada produto e um documento so, com o saldo dos baldes em
+// quantidadePequeno. Esta funcao funde o que ficou para tras.
+export async function unificarProdutosDuplicados() {
+  if (!db) return { fundidos: 0 };
+
+  const snapshot = await getDocs(collection(db, "produtos"));
+  const todos = snapshot.docs.map((documento) => ({
+    id: documento.id,
+    ...documento.data(),
+  }));
+
+  const doEstoquePequeno = todos.filter(
+    (produto) => produto.tipoEstoque === "pequeno",
+  );
+
+  if (doEstoquePequeno.length === 0) return { fundidos: 0 };
+
+  const chave = (produto) =>
+    String(produto.codigo || produto.nome || "")
+      .trim()
+      .toLowerCase();
+
+  const principais = new Map(
+    todos
+      .filter((produto) => (produto.tipoEstoque || "principal") === "principal")
+      .map((produto) => [chave(produto), produto]),
+  );
+
+  let fundidos = 0;
+
+  for (const pequeno of doEstoquePequeno) {
+    const principal = principais.get(chave(pequeno));
+    const saldoPequeno = Number(pequeno.quantidadeKg || 0);
+
+    if (principal) {
+      await updateDoc(doc(db, "produtos", principal.id), {
+        quantidadePequeno:
+          Number(principal.quantidadePequeno || 0) + saldoPequeno,
+      });
+      await deleteDoc(doc(db, "produtos", pequeno.id));
+    } else {
+      // Sem par no pavilhao: vira um produto normal, com saldo so nos baldes.
+      const { id: _id, ...dados } = pequeno;
+      await setDoc(doc(db, "produtos", pequeno.id), {
+        ...dados,
+        tipoEstoque: "principal",
+        quantidadeKg: 0,
+        quantidadePequeno: saldoPequeno,
+      });
+    }
+
+    fundidos += 1;
+  }
+
+  return { fundidos };
 }
