@@ -107,11 +107,18 @@ function perfilOwnerInicial({ comSenhaSemente }) {
 }
 
 async function criarOwnerInicial(email, senha) {
-  if (
-    email.toLowerCase() !== OWNER_EMAIL.toLowerCase() ||
-    senha !== SENHA_SEMENTE_OWNER
-  ) {
-    throw new Error("E-mail ou senha invalidos.");
+  const ehEmailDoOwner = email.toLowerCase() === OWNER_EMAIL.toLowerCase();
+
+  if (!ehEmailDoOwner) {
+    throw new Error("E-mail ou senha incorretos.");
+  }
+
+  // O e-mail confere, mas a senha nao e a semente: provavelmente um banco
+  // novo, onde a conta ainda nao existe e so a semente cria o Owner.
+  if (senha !== SENHA_SEMENTE_OWNER) {
+    throw new Error(
+      "A conta do Owner ainda nao existe neste banco. Entre com a senha inicial do sistema para cria-la e defina a sua senha em seguida.",
+    );
   }
 
   let credencial;
