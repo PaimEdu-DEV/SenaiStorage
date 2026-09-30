@@ -54,13 +54,14 @@ export default function LoginModal({ aberto, aoFechar }) {
         <form className="auth-form" onSubmit={enviar}>
           <label>
             E-mail
+            {/* autoComplete off: o navegador nao sugere e-mails ja digitados. */}
             <input
               type="email"
               required
-              autoComplete="username"
+              autoComplete="off"
+              name="acesso-email"
               value={email}
               onChange={(evento) => setEmail(evento.target.value)}
-              placeholder="seu.email@docente.senai.br"
             />
           </label>
 
@@ -71,7 +72,8 @@ export default function LoginModal({ aberto, aoFechar }) {
                 type={senhaVisivel ? "text" : "password"}
                 required
                 minLength={6}
-                autoComplete="current-password"
+                autoComplete="off"
+                name="acesso-senha"
                 value={senha}
                 onChange={(evento) => setSenha(evento.target.value)}
               />
