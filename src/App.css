@@ -792,3 +792,31 @@ input:-webkit-autofill:focus {
 
 .products-container > .produtos-grid { margin-top: 20px; }
 .products-container > .inline-filter-bar { margin-top: 20px; }
+
+/* ===== Campos personalizados ===== */
+.campos-personalizados { display: grid; gap: 12px; padding-top: 18px; border-top: 1px solid var(--soft-line); }
+.campos-cabecalho { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.campos-cabecalho > span { font-size: 11px; font-weight: 650; text-transform: uppercase; color: var(--muted); }
+.campos-lista { gap: 14px; }
+.campos-lista .campo-largo { grid-column: 1 / -1; }
+.campo-titulo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.campo-selo { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; background: var(--amber-light); color: var(--amber); font-size: 9px; font-weight: 600; text-transform: uppercase; }
+.campo-selo.visivel { background: var(--green-light); color: var(--green); }
+.campo-sim-nao { display: flex; align-items: center; gap: 10px; height: 44px; }
+.campo-sim-nao small { color: var(--muted); font-size: 12px; }
+
+.campos-leitura { display: grid; gap: 4px; margin: 6px 0; }
+.campos-leitura > div { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; }
+.campos-leitura dt { color: var(--muted); font-weight: 600; }
+.campos-leitura dt::after { content: ":"; }
+.campos-leitura dd { color: var(--text); }
+
+.opcoes-entrada { display: flex; gap: 8px; }
+.opcoes-lista { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.opcao-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-soft); font-size: 11px; font-weight: 500; }
+.opcao-chip:hover { border-color: var(--red); color: var(--red); }
+
+.campos-table .admin-panel-row { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 118px auto; }
+.campos-table .role-tag { border: 0; cursor: pointer; }
+.campos-table .role-tag:disabled { cursor: default; opacity: .75; }
+.settings-card-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

@@ -1,4 +1,4 @@
-const rotulosAcao = {
+﻿const rotulosAcao = {
   CREATE: "Criacao",
   UPDATE: "Edicao",
   DELETE: "Exclusao",
@@ -16,6 +16,9 @@ const rotulosAcao = {
   USER_PROMOTE: "Promocao de usuario",
   USER_DEMOTE: "Rebaixamento de usuario",
   PERMISSION_UPDATE: "Alteracao de permissoes",
+  FIELD_CREATE: "Criacao de campo",
+  FIELD_UPDATE: "Alteracao de campo",
+  FIELD_DELETE: "Exclusao de campo",
   PERMISSION_DENIED: "Acesso negado",
   CONFIG_UPDATE: "Alteracao de configuracao",
   LINK_CREATE: "Criacao de link de acesso",
@@ -25,6 +28,7 @@ const rotulosAcao = {
 
 const rotulosEntidade = {
   produto: "Produto",
+  campo: "Campo",
   produtos: "Produtos",
   user: "Usuario",
   users: "Usuarios",
@@ -49,6 +53,9 @@ const variantesAcao = {
   BACKUP: "info",
   EXPORT: "info",
   PERMISSION_UPDATE: "info",
+  FIELD_CREATE: "good",
+  FIELD_UPDATE: "info",
+  FIELD_DELETE: "low",
   LINK_CREATE: "info",
   STOCK_OUT: "attention",
   STOCK_RETURN: "attention",

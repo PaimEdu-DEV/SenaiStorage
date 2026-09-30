@@ -59,6 +59,13 @@ service cloud.firestore {
       allow delete: if ehAdmin();
     }
 
+    // Definicoes dos campos: o aluno precisa ler para a tela saber o que
+    // mostrar; so o Super Admin cria, altera e remove.
+    match /camposPersonalizados/{campoId} {
+      allow read: if true;
+      allow create, update, delete: if ehSuperAdmin();
+    }
+
     match /configuracoes/{configuracaoId} {
       allow read: if true;
       allow write: if ehAdmin();

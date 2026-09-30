@@ -7,6 +7,9 @@ import {
   excluirProdutoFinal,
   listarProdutosFinais,
 } from "../crud";
+import { useCampos } from "../hooks/useCampos";
+import CamposPersonalizados, { ListaCamposPersonalizados } from "./CamposPersonalizados";
+import ModalCampo from "./ModalCampo";
 import { converterImagemParaWebp } from "../lib/imagem";
 import { traduzirErro } from "../lib/mensagensErro";
 import { criarLogAuditoria } from "../services/auditService";
@@ -26,18 +29,25 @@ function formatarData(timestamp) {
 }
 
 export default function PaginaProdutos({ aoPedirConfirmacao }) {
-  const { perfil, ehAdmin } = useAuth();
+  const { perfil, ehAdmin, ehSuperAdmin } = useAuth();
   const [produtosFinais, setProdutosFinais] = useState([]);
   const [formulario, setFormulario] = useState(formularioInicial);
   const [busca, setBusca] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [criandoCampo, setCriandoCampo] = useState(false);
+  const [personalizados, setPersonalizados] = useState({});
 
   // Aluno ve a vitrine; escrever depende da permissao de produtos.
   const podeCriar = ehAdmin && podeFazer(perfil, "produtos.criar");
   const podeEditar = ehAdmin && podeFazer(perfil, "produtos.editar");
   const podeExcluir = ehAdmin && podeFazer(perfil, "produtos.excluir");
+  const { personalizados: camposDoFormulario, visiveis: camposVisiveis } = useCampos(
+    "catalogo",
+    { ehAdmin },
+  );
+  const camposExtras = camposVisiveis.filter((campo) => !campo.sistema);
 
   useEffect(
     () =>
@@ -58,6 +68,7 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
 
   function abrirCadastro() {
     setFormulario(formularioInicial);
+    setPersonalizados({});
     setErro("");
     setModalAberto(true);
   }
@@ -71,6 +82,7 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
       fotoNome: produto.fotoNome || "",
       fotoTamanhoKb: produto.fotoTamanhoKb || "",
     });
+    setPersonalizados(produto.personalizados || {});
     setErro("");
     setModalAberto(true);
   }
@@ -121,6 +133,7 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
         foto: formulario.foto,
         fotoNome: formulario.fotoNome,
         fotoTamanhoKb: formulario.fotoTamanhoKb,
+        personalizados,
         criadoEm: formulario.id ? undefined : Date.now(),
         atualizadoEm: Date.now(),
       };
@@ -138,6 +151,7 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
       }).catch(() => {});
 
       setFormulario(formularioInicial);
+      setPersonalizados({});
       setModalAberto(false);
     } catch (error) {
       setErro(traduzirErro(error));
@@ -234,6 +248,12 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
                 <div className="produto-corpo">
                   <strong>{produto.nome}</strong>
                   <p>{produto.descricao || "Sem descricao."}</p>
+
+                  <ListaCamposPersonalizados
+                    campos={camposExtras}
+                    valores={produto.personalizados || {}}
+                  />
+
                   {produto.criadoEm && (
                     <small>Cadastrado em {formatarData(produto.criadoEm)}</small>
                   )}
@@ -331,6 +351,14 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
                 </div>
               )}
 
+              <CamposPersonalizados
+                campos={camposDoFormulario}
+                valores={personalizados}
+                aoMudar={setPersonalizados}
+                podeCriar={ehSuperAdmin}
+                aoCriarCampo={() => setCriandoCampo(true)}
+              />
+
               {erro && <p className="form-error">{erro}</p>}
 
               <div className="form-actions">
@@ -350,6 +378,10 @@ export default function PaginaProdutos({ aoPedirConfirmacao }) {
             </form>
           </div>
         </div>
+      )}
+
+      {criandoCampo && (
+        <ModalCampo contexto="catalogo" aoFechar={() => setCriandoCampo(false)} />
       )}
     </section>
   );

@@ -54,10 +54,14 @@ import {
 import { firebaseConfigurado } from "./firebaseconfig";
 import { podeFazer, rotuloPapel } from "./config/security";
 import { traduzirErro } from "./lib/mensagensErro";
+import { useCampos } from "./hooks/useCampos";
 import { criarLogAuditoria } from "./services/auditService";
 import { useAuth } from "./contexts/useAuth";
 import AcessoRevogadoModal from "./components/AcessoRevogadoModal";
 import AcoesProduto from "./components/AcoesProduto";
+import CamposPersonalizados, { ListaCamposPersonalizados } from "./components/CamposPersonalizados";
+import GerenciadorCampos from "./components/GerenciadorCampos";
+import ModalCampo from "./components/ModalCampo";
 import ConfirmacaoModal from "./components/ConfirmacaoModal";
 import LoginModal from "./components/LoginModal";
 import PainelBackups from "./components/PainelBackups";
@@ -305,6 +309,8 @@ function App() {
   const [perfilSistema, setPerfilSistema] = useState(perfilAluno);
   const [loginAberto, setLoginAberto] = useState(false);
   const [confirmacao, setConfirmacao] = useState(null);
+  const [personalizadosProduto, setPersonalizadosProduto] = useState({});
+  const [criandoCampoEstoque, setCriandoCampoEstoque] = useState(false);
   const [produtosFinais, setProdutosFinais] = useState([]);
   const [configuracoesSistema, setConfiguracoesSistema] = useState(
     configuracoesSistemaInicial,
@@ -381,6 +387,9 @@ function App() {
   const podeResponderJustificativas = temPermissao("justificativas.responder");
   const podeGerarLinks = temPermissao("links.gerar");
   const podeEditarConfiguracoes = temPermissao("configuracoes.editar");
+  const { personalizados: camposDoEstoque, visiveis: camposEstoqueVisiveis } =
+    useCampos("estoque", { ehAdmin: usuarioAdmin });
+  const camposExtrasEstoque = camposEstoqueVisiveis.filter((campo) => !campo.sistema);
 
   // Cada produto e um unico documento: quantidadeKg e o saldo do pavilhao e
   // quantidadePequeno o dos baldes. A lista de baldes e uma visao derivada,
@@ -750,6 +759,7 @@ function App() {
       tipoEstoque: estoquePrincipal,
       limiteBaixo: Number(formulario.limiteBaixo),
       limiteAtencao: Number(formulario.limiteAtencao),
+      personalizados: personalizadosProduto,
     };
     const destinoSelecionado =
       produto.tipoEstoque === estoquePequeno
@@ -832,6 +842,7 @@ function App() {
       }
 
       setFormulario(formularioInicial);
+      setPersonalizadosProduto({});
       setModalEntradaAberto(false);
     } catch (error) {
       setErro(traduzirErro(error));
@@ -844,6 +855,7 @@ function App() {
     }
 
     setProdutoEditandoId(produto.id);
+    setPersonalizadosProduto(produto.personalizados || {});
     setModalTodosProdutosAberto(false);
     setModalEntradaAberto(true);
     setFormulario({
@@ -988,6 +1000,7 @@ function App() {
 
   function abrirEntradaProduto() {
     setErro("");
+    setPersonalizadosProduto({});
     setModalEntradaAberto(true);
   }
 
@@ -2060,6 +2073,12 @@ function App() {
       <div className={modoEscuro ? "app dark-mode" : "app"}>
         <LoginModal aberto={loginAberto} aoFechar={() => setLoginAberto(false)} />
         <ConfirmacaoModal pedido={confirmacao} aoFechar={() => setConfirmacao(null)} />
+        {criandoCampoEstoque && (
+          <ModalCampo
+            contexto="estoque"
+            aoFechar={() => setCriandoCampoEstoque(false)}
+          />
+        )}
         <div
           className={
             menuLateralAberto
@@ -2576,6 +2595,10 @@ function App() {
                           <span>Codigo: {produto.codigo}</span>
                           <span>Fornecedor: {produto.fornecedor}</span>
                           <span>Descricao: {produto.descricao}</span>
+                          <ListaCamposPersonalizados
+                            campos={camposExtrasEstoque}
+                            valores={produto.personalizados || {}}
+                          />
                         </div>
 
                         <div className="stock-locations">
@@ -2696,6 +2719,10 @@ function App() {
                           <span>Codigo: {produto.codigo}</span>
                           <span>Fornecedor: {produto.fornecedor}</span>
                           <span>Descricao: {produto.descricao}</span>
+                          <ListaCamposPersonalizados
+                            campos={camposExtrasEstoque}
+                            valores={produto.personalizados || {}}
+                          />
                         </div>
 
                         <div>
@@ -2918,6 +2945,8 @@ function App() {
                       </button>
                     </article>
                     )}
+
+                    <GerenciadorCampos aoPedirConfirmacao={setConfirmacao} />
                   </div>
                 </section>
               </section>
@@ -3786,6 +3815,14 @@ function App() {
                     />
                   </label>
                 </div>
+
+                <CamposPersonalizados
+                  campos={camposDoEstoque}
+                  valores={personalizadosProduto}
+                  aoMudar={setPersonalizadosProduto}
+                  podeCriar={ehSuperAdmin}
+                  aoCriarCampo={() => setCriandoCampoEstoque(true)}
+                />
 
                 {erro && <p className="form-error">{erro}</p>}
 
@@ -4724,6 +4761,10 @@ function App() {
                       <span>Codigo: {produto.codigo}</span>
                       <span>Fornecedor: {produto.fornecedor}</span>
                       <span>Descricao: {produto.descricao}</span>
+                      <ListaCamposPersonalizados
+                        campos={camposExtrasEstoque}
+                        valores={produto.personalizados || {}}
+                      />
                     </div>
 
                     <div>
@@ -4824,6 +4865,10 @@ function App() {
                       <span>Codigo: {produto.codigo}</span>
                       <span>Fornecedor: {produto.fornecedor}</span>
                       <span>Descricao: {produto.descricao}</span>
+                      <ListaCamposPersonalizados
+                        campos={camposExtrasEstoque}
+                        valores={produto.personalizados || {}}
+                      />
                     </div>
 
                     <div>
