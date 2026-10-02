@@ -43,7 +43,7 @@ export default function CampoQuantidade({
 
       {mostrarEquivalente && (
         <span className="field-hint">
-          = {equivalente} {unidadeBase}
+          = {String(Number(Number(equivalente).toFixed(4)))} {unidadeBase}
         </span>
       )}
     </label>

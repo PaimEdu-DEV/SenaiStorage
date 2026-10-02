@@ -199,6 +199,15 @@ function converterParaUnidadeBase(valor, unidadeInformada, unidadeBase) {
 
 // Soma do que foi declarado e quanto falta para fechar, por material. Tudo
 // e convertido para a unidade do cadastro antes de comparar com o saldo.
+// Gramas contra quilos geram valores pequenos: arredondar em duas casas
+// mostraria 0,004 kg como zero. Guarda quatro casas e tira os zeros a toa.
+function formatarQuantidade(valor) {
+  const numero = Number(valor || 0);
+  if (!Number.isFinite(numero)) return "0";
+
+  return String(Number(numero.toFixed(4)));
+}
+
 function calcularFechamentoItem(item, quantidadeDisponivel, unidadeBase) {
   const unidadeDoCampo = (campo) => item.unidades?.[campo] || unidadeBase;
   const paraBase = (campo) =>
@@ -214,16 +223,17 @@ function calcularFechamentoItem(item, quantidadeDisponivel, unidadeBase) {
   };
   const informado =
     emBase.produto + emBase.sucata + emBase.estoque + emBase.perda;
-  const diferenca = Number((retirada - informado).toFixed(2));
+  const diferenca = Number((retirada - informado).toFixed(4));
 
   return {
     unidadeDoCampo,
     emBase,
-    retirada: Number(retirada.toFixed(2)),
-    informado: Number(informado.toFixed(2)),
+    retirada: Number(retirada.toFixed(4)),
+    informado: Number(informado.toFixed(4)),
     diferenca,
     disponivel: Number(quantidadeDisponivel || 0),
-    fechou: Math.abs(diferenca) <= 0.009,
+    // Tolerancia de meio grama, para erro de digitacao nao travar a aula.
+    fechou: Math.abs(diferenca) <= 0.0005,
   };
 }
 
@@ -3297,12 +3307,16 @@ function App() {
                             : "calculation-card open"
                         }
                       >
-                        <span>Retirado: {fechamento.retirada}</span>
-                        <span>Informado: {fechamento.informado}</span>
+                        <span>
+                          Retirado: {formatarQuantidade(fechamento.retirada)}
+                        </span>
+                        <span>
+                          Informado: {formatarQuantidade(fechamento.informado)}
+                        </span>
                         <strong>
                           {fechamento.fechou
                             ? "Conta fechada"
-                            : `Diferença: ${fechamento.diferenca}`}
+                            : `Diferença: ${formatarQuantidade(fechamento.diferenca)}`}
                         </strong>
                       </div>
                     </article>
@@ -3346,11 +3360,11 @@ function App() {
                   </span>
                   <span>
                     <small>Total retirado</small>
-                    <strong>{Number(quantidadeRegistroRetirada.toFixed(2))}</strong>
+                    <strong>{formatarQuantidade(quantidadeRegistroRetirada)}</strong>
                   </span>
                   <span>
                     <small>Total informado</small>
-                    <strong>{Number(totalRegistroJustificado.toFixed(2))}</strong>
+                    <strong>{formatarQuantidade(totalRegistroJustificado)}</strong>
                   </span>
                   <span className={registroUsoPrecisaJustificativa ? "aberta" : "ok"}>
                     <small>Situacao</small>
