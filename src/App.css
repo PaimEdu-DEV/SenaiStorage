@@ -860,3 +860,48 @@ input:-webkit-autofill:focus {
 @media (max-width: 900px) {
   .registered-item-meta { grid-column: 1 / -1; }
 }
+
+/* ===== Registro de uso com varios materiais ===== */
+.usage-product { display: flex; align-items: center; gap: 10px; text-align: left; }
+.usage-product-check {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: #fff;
+}
+.usage-product.selected .usage-product-check { background: #e96612; border-color: #e96612; }
+.usage-product-info { display: grid; gap: 2px; min-width: 0; }
+
+.registro-material {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.registro-material + .registro-material { margin-top: 12px; }
+.registro-material > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.registro-material > header div { display: grid; gap: 2px; min-width: 0; }
+.registro-material > header strong { font-size: 14px; }
+.registro-material > header span { color: var(--muted); font-size: 11px; }
+
+.registro-resumo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--surface-soft);
+  border-radius: 8px;
+}
+.registro-resumo span { display: grid; gap: 2px; }
+.registro-resumo small { color: var(--muted); font-size: 10px; text-transform: uppercase; font-weight: 600; }
+.registro-resumo strong { font-size: 14px; }
+.registro-resumo .aberta strong { color: var(--amber); }
+.registro-resumo .ok strong { color: var(--green); }

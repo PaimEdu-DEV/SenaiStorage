@@ -140,9 +140,15 @@ const formularioLinkInicial = {
 const configuracoesSistemaInicial = {
   horarioJustificativa: "17:00",
 };
+// Uma aula pode consumir varios materiais, entao o registro guarda um item
+// por material selecionado, cada um com a propria conta de destino.
 const registroUsoInicial = {
-  produtoId: "",
   aluno: "",
+  justificativa: "",
+  itens: {},
+};
+
+const itemRegistroInicial = {
   quantidadeRetirada: "",
   produto: "",
   sucata: "",
@@ -150,8 +156,26 @@ const registroUsoInicial = {
   perda: "",
   produtoFinalId: "",
   destinoEstoque: estoquePequeno,
-  justificativa: "",
 };
+
+// Soma do que foi declarado e quanto falta para fechar, por material.
+function calcularFechamentoItem(item, quantidadeDisponivel) {
+  const retirada = Number(item.quantidadeRetirada || 0);
+  const informado =
+    Number(item.produto || 0) +
+    Number(item.sucata || 0) +
+    Number(item.estoque || 0) +
+    Number(item.perda || 0);
+  const diferenca = Number((retirada - informado).toFixed(2));
+
+  return {
+    retirada,
+    informado,
+    diferenca,
+    disponivel: Number(quantidadeDisponivel || 0),
+    fechou: Math.abs(diferenca) <= 0.009,
+  };
+}
 
 function obterStatusEstoque(quantidadeKg, configuracoes = configuracoesEstoquePadrao) {
   const quantidade = Number(quantidadeKg || 0);
@@ -442,22 +466,31 @@ function App() {
 
     return nome.includes(busca) || codigo.includes(busca);
   });
-  const produtoRegistroUso = produtosPequeno.find(
-    (produto) => produto.id === registroUso.produtoId,
+  // Materiais escolhidos para esta aula, cada um com o proprio fechamento.
+  const itensRegistroUso = Object.entries(registroUso.itens)
+    .map(([produtoId, valores]) => {
+      const produto = produtosPequeno.find((item) => item.id === produtoId);
+      if (!produto) return null;
+
+      return {
+        produto,
+        valores,
+        fechamento: calcularFechamentoItem(valores, produto.quantidadeKg),
+      };
+    })
+    .filter(Boolean);
+  const quantidadeRegistroRetirada = itensRegistroUso.reduce(
+    (total, item) => total + item.fechamento.retirada,
+    0,
   );
-  const quantidadeRegistroRetirada = Number(registroUso.quantidadeRetirada || 0);
-  const totalRegistroJustificado =
-    Number(registroUso.produto || 0) +
-    Number(registroUso.sucata || 0) +
-    Number(registroUso.estoque || 0) +
-    Number(registroUso.perda || 0);
-  const diferencaRegistroUso = Number(
-    (quantidadeRegistroRetirada - totalRegistroJustificado).toFixed(2),
+  const totalRegistroJustificado = itensRegistroUso.reduce(
+    (total, item) => total + item.fechamento.informado,
+    0,
   );
-  const registroUsoPrecisaJustificativa = Math.abs(diferencaRegistroUso) > 0.009;
-  const produtoFinalSelecionado = produtosFinais.find(
-    (produtoFinal) => produtoFinal.id === registroUso.produtoFinalId,
+  const itensComDiferenca = itensRegistroUso.filter(
+    (item) => !item.fechamento.fechou,
   );
+  const registroUsoPrecisaJustificativa = itensComDiferenca.length > 0;
   const produtosFiltradosTodos = produtos.filter((produto) => {
     const busca = buscaTodosProdutos.toLowerCase().trim();
     const nome = String(produto.nome || "").toLowerCase();
@@ -1120,6 +1153,32 @@ function App() {
     });
   }
 
+  // Marcar e desmarcar um material da aula.
+  function alternarMaterialRegistroUso(produto) {
+    setErroRegistroUso("");
+    setRegistroUso((atual) => {
+      const itens = { ...atual.itens };
+
+      if (itens[produto.id]) {
+        delete itens[produto.id];
+      } else {
+        itens[produto.id] = { ...itemRegistroInicial };
+      }
+
+      return { ...atual, itens };
+    });
+  }
+
+  function atualizarItemRegistroUso(produtoId, campo, valor) {
+    setRegistroUso((atual) => ({
+      ...atual,
+      itens: {
+        ...atual.itens,
+        [produtoId]: { ...atual.itens[produtoId], [campo]: valor },
+      },
+    }));
+  }
+
 
 
 
@@ -1152,140 +1211,146 @@ function App() {
   }
 
   async function registrarUsoAula() {
-    const quantidadeDisponivel = Number(produtoRegistroUso?.quantidadeKg || 0);
-    const quantidadeProduto = Number(registroUso.produto || 0);
-    const quantidadeSucata = Number(registroUso.sucata || 0);
-    const quantidadeEstoque = Number(registroUso.estoque || 0);
-    const quantidadePerda = Number(registroUso.perda || 0);
-    const sobraVoltaParaPrincipal = registroUso.destinoEstoque === estoquePrincipal;
-
     setErroRegistroUso("");
-
-    if (!produtoRegistroUso) {
-      setErroRegistroUso("Selecione o material usado na aula.");
-      return;
-    }
 
     if (!registroUso.aluno.trim()) {
       setErroRegistroUso("Informe o nome do aluno ou turma.");
       return;
     }
 
-    if (quantidadeRegistroRetirada <= 0) {
-      setErroRegistroUso("Informe uma quantidade retirada maior que zero.");
+    if (itensRegistroUso.length === 0) {
+      setErroRegistroUso("Selecione pelo menos um material usado na aula.");
       return;
     }
 
-    if (quantidadeRegistroRetirada > quantidadeDisponivel) {
-      setErroRegistroUso("A quantidade retirada nao pode ser maior que o balde.");
-      return;
+    // Valida material por material antes de gravar qualquer coisa, para a
+    // aula nao ficar registrada pela metade.
+    for (const { produto, valores, fechamento } of itensRegistroUso) {
+      const rotulo = produto.nome;
+
+      if (fechamento.retirada <= 0) {
+        setErroRegistroUso(`Informe a quantidade retirada de ${rotulo}.`);
+        return;
+      }
+
+      if (fechamento.retirada > fechamento.disponivel) {
+        setErroRegistroUso(
+          `A quantidade retirada de ${rotulo} passa do que existe no balde (${fechamento.disponivel} ${obterUnidadeProduto(produto)}).`,
+        );
+        return;
+      }
+
+      if (
+        Number(valores.produto || 0) < 0 ||
+        Number(valores.sucata || 0) < 0 ||
+        Number(valores.estoque || 0) < 0 ||
+        Number(valores.perda || 0) < 0
+      ) {
+        setErroRegistroUso(`As quantidades de ${rotulo} nao podem ser negativas.`);
+        return;
+      }
+
+      if (Number(valores.produto || 0) > 0 && !valores.produtoFinalId) {
+        setErroRegistroUso(`Selecione qual produto final foi feito com ${rotulo}.`);
+        return;
+      }
+
+      if (fechamento.informado > fechamento.retirada) {
+        setErroRegistroUso(
+          `Em ${rotulo}, a soma dos destinos passa do que foi retirado.`,
+        );
+        return;
+      }
     }
 
-    if (
-      quantidadeProduto < 0 ||
-      quantidadeSucata < 0 ||
-      quantidadeEstoque < 0 ||
-      quantidadePerda < 0
-    ) {
-      setErroRegistroUso("As quantidades nao podem ser negativas.");
-      return;
-    }
-
-    if (quantidadeProduto > 0 && !produtoFinalSelecionado) {
-      setErroRegistroUso("Selecione qual produto final foi feito.");
-      return;
-    }
-
-    if (totalRegistroJustificado > quantidadeRegistroRetirada) {
-      setErroRegistroUso("A soma das quantidades nao pode passar do que foi retirado.");
-      return;
-    }
+    const justificativaInformada = registroUso.justificativa.trim();
 
     if (
       registroUsoPrecisaJustificativa &&
       horarioJustificativaAtivo &&
-      !registroUso.justificativa.trim()
+      !justificativaInformada
     ) {
       setErroRegistroUso("A conta nao fechou. Escreva uma justificativa.");
       return;
     }
 
-    const quantidadeQueSaiDoBalde = sobraVoltaParaPrincipal
-      ? quantidadeRegistroRetirada
-      : Number((quantidadeRegistroRetirada - quantidadeEstoque).toFixed(2));
-    const novoEstoquePequeno = Number(
-      (quantidadeDisponivel - quantidadeQueSaiDoBalde).toFixed(2),
-    );
-    const produtoNoEstoquePrincipal = produtosPrincipal.find(
-      (produtoPrincipal) =>
-        normalizarCodigo(produtoPrincipal.codigo) ===
-        normalizarCodigo(produtoRegistroUso.codigo),
-    );
-    const justificativaInformada = registroUso.justificativa.trim();
-    try {
-      await atualizarSaldoProduto(produtoRegistroUso, novoEstoquePequeno);
+    // Identifica todos os lancamentos como um mesmo fechamento de aula.
+    const registroAulaId = crypto.randomUUID();
+    const aluno = registroUso.aluno.trim();
 
-      if (sobraVoltaParaPrincipal && quantidadeEstoque > 0) {
-        if (produtoNoEstoquePrincipal) {
-          await atualizarProduto(produtoNoEstoquePrincipal.id, {
+    try {
+      for (const { produto, valores, fechamento } of itensRegistroUso) {
+        const quantidadeEstoque = Number(valores.estoque || 0);
+        const sobraVoltaParaPrincipal =
+          valores.destinoEstoque === estoquePrincipal;
+        const quantidadeQueSaiDoBalde = sobraVoltaParaPrincipal
+          ? fechamento.retirada
+          : Number((fechamento.retirada - quantidadeEstoque).toFixed(2));
+
+        await atualizarSaldoProduto(
+          produto,
+          Number((fechamento.disponivel - quantidadeQueSaiDoBalde).toFixed(2)),
+        );
+
+        if (sobraVoltaParaPrincipal && quantidadeEstoque > 0) {
+          await atualizarProduto(produto.id, {
             quantidadeKg: Number(
-              (
-                Number(produtoNoEstoquePrincipal.quantidadeKg || 0) +
-                quantidadeEstoque
-              ).toFixed(2),
+              (Number(produto.quantidadeKg || 0) + quantidadeEstoque).toFixed(2),
             ),
           });
-        } else {
-          await cadastrarProduto({
-            ...produtoRegistroUso,
-            quantidadeKg: quantidadeEstoque,
-            tipoEstoque: estoquePrincipal,
+        }
+
+        const produtoFinal =
+          Number(valores.produto || 0) > 0
+            ? produtosFinais.find((item) => item.id === valores.produtoFinalId) ||
+              null
+            : null;
+
+        const resumoFechamento = {
+          retirado: fechamento.retirada,
+          produto: Number(valores.produto || 0),
+          sucata: Number(valores.sucata || 0),
+          estoque: quantidadeEstoque,
+          destinoEstoque: sobraVoltaParaPrincipal
+            ? "Estoque Principal"
+            : "Estoque Pequeno",
+          perda: Number(valores.perda || 0),
+          diferenca: fechamento.diferenca,
+        };
+
+        const movimentacaoId = await cadastrarMovimentacao({
+          tipo: "uso-aula",
+          titulo: "Uso de material em aula",
+          produto,
+          quantidadeKg: fechamento.retirada,
+          origem: "Estoque Pequeno",
+          destino: "Registro de aula",
+          usuario: aluno,
+          produtoFinal,
+          precisaJustificativa: !fechamento.fechou,
+          registroAulaId,
+          fechamento: resumoFechamento,
+          descricao:
+            `${aluno} registrou ${fechamento.retirada} ` +
+            `${obterUnidadeProduto(produto)} de ${produto.nome}.`,
+        });
+
+        if (!fechamento.fechou) {
+          await cadastrarJustificativa({
+            status: justificativaInformada ? "enviada" : "pendente",
+            movimentacaoId,
+            registroAulaId,
+            produto,
+            usuario: aluno,
+            quantidadeKg: fechamento.retirada,
+            fechamento: resumoFechamento,
+            comentario: justificativaInformada,
+            horarioJustificativa:
+              configuracoesSistema.horarioJustificativa ||
+              configuracoesSistemaInicial.horarioJustificativa,
+            enviadaEm: justificativaInformada ? Date.now() : null,
           });
         }
-      }
-
-      const fechamento = {
-        retirado: quantidadeRegistroRetirada,
-        produto: quantidadeProduto,
-        sucata: quantidadeSucata,
-        estoque: quantidadeEstoque,
-        destinoEstoque: sobraVoltaParaPrincipal
-          ? "Estoque Principal"
-          : "Estoque Pequeno",
-        perda: quantidadePerda,
-        diferenca: diferencaRegistroUso,
-      };
-
-      const movimentacaoId = await cadastrarMovimentacao({
-        tipo: "uso-aula",
-        titulo: "Uso de material em aula",
-        produto: produtoRegistroUso,
-        quantidadeKg: quantidadeRegistroRetirada,
-        origem: "Estoque Pequeno",
-        destino: "Registro de aula",
-        usuario: registroUso.aluno.trim(),
-        produtoFinal: quantidadeProduto > 0 ? produtoFinalSelecionado : null,
-        precisaJustificativa: registroUsoPrecisaJustificativa,
-        fechamento,
-        descricao:
-          `${registroUso.aluno.trim()} registrou ${quantidadeRegistroRetirada} ` +
-          `${obterUnidadeProduto(produtoRegistroUso)} de ${produtoRegistroUso.nome}.`,
-      });
-
-      if (registroUsoPrecisaJustificativa) {
-        await cadastrarJustificativa({
-          status: justificativaInformada ? "enviada" : "pendente",
-          movimentacaoId,
-          produto: produtoRegistroUso,
-          usuario: registroUso.aluno.trim(),
-          quantidadeKg: quantidadeRegistroRetirada,
-          fechamento,
-          comentario: justificativaInformada,
-          horarioJustificativa:
-            configuracoesSistema.horarioJustificativa ||
-            configuracoesSistemaInicial.horarioJustificativa,
-          enviadaEm: justificativaInformada ? Date.now() : null,
-        });
       }
 
       fecharRegistroUsoAula();
@@ -2936,8 +3001,11 @@ function App() {
                   <div className="block-heading">
                     <span>1</span>
                     <div>
-                      <strong>Quem usou e qual material?</strong>
-                      <p>Selecione um item que esta no Estoque Pequeno.</p>
+                      <strong>Quem usou e quais materiais?</strong>
+                      <p>
+                        Marque todos os materiais da aula. Pode selecionar mais
+                        de um.
+                      </p>
                     </div>
                   </div>
 
@@ -2966,28 +3034,28 @@ function App() {
 
                   <div className="usage-products-list compact">
                     {produtosFiltradosRegistroUso.map((produto) => {
-                      const selecionado = registroUso.produtoId === produto.id;
+                      const selecionado = Boolean(registroUso.itens[produto.id]);
 
                       return (
                         <button
                           type="button"
                           className={
-                            selecionado
-                              ? "usage-product selected"
-                              : "usage-product"
+                            selecionado ? "usage-product selected" : "usage-product"
                           }
                           key={produto.id}
-                          onClick={() =>
-                            setRegistroUso({
-                              ...registroUso,
-                              produtoId: produto.id,
-                            })
-                          }
+                          aria-pressed={selecionado}
+                          onClick={() => alternarMaterialRegistroUso(produto)}
                         >
-                          <strong>{produto.nome}</strong>
-                          <span>
-                            {produto.quantidadeKg ?? 0}{" "}
-                            {obterUnidadeProduto(produto)} disponivel
+                          <span className="usage-product-check">
+                            {selecionado && <Check size={14} />}
+                          </span>
+
+                          <span className="usage-product-info">
+                            <strong>{produto.nome}</strong>
+                            <span>
+                              {produto.quantidadeKg ?? 0}{" "}
+                              {obterUnidadeProduto(produto)} disponivel
+                            </span>
                           </span>
                         </button>
                       );
@@ -2999,161 +3067,187 @@ function App() {
                       Nenhum material disponivel nos baldes.
                     </p>
                   )}
+
+                  {itensRegistroUso.length > 0 && (
+                    <p className="field-hint">
+                      {itensRegistroUso.length} material(is) selecionado(s).
+                    </p>
+                  )}
                 </section>
 
                 <section className="class-usage-block">
                   <div className="block-heading">
                     <span>2</span>
                     <div>
-                      <strong>Para onde foi o material?</strong>
-                      <p>A soma precisa bater com a quantidade retirada.</p>
+                      <strong>Para onde foi cada material?</strong>
+                      <p>Cada material tem a propria conta, e todas precisam bater.</p>
                     </div>
                   </div>
 
-                  <label>
-                    Quantidade retirada
-                    {produtoRegistroUso && (
-                      <span className="field-hint">
-                        Disponivel: {produtoRegistroUso.quantidadeKg ?? 0}{" "}
-                        {obterUnidadeProduto(produtoRegistroUso)}
-                      </span>
-                    )}
-                    <input
-                      type="number"
-                      name="quantidadeRetirada"
-                      min="0"
-                      max={produtoRegistroUso?.quantidadeKg || undefined}
-                      step="0.01"
-                      placeholder="Ex: 10"
-                      value={registroUso.quantidadeRetirada}
-                      onChange={atualizarCampoRegistroUso}
-                    />
-                  </label>
-
-                  <div className="usage-allocation-grid">
-                    <label>
-                      Produto
-                      <input
-                        type="number"
-                        name="produto"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
-                        value={registroUso.produto}
-                        onChange={atualizarCampoRegistroUso}
-                      />
-                    </label>
-
-                    <label>
-                      Sucata
-                      <input
-                        type="number"
-                        name="sucata"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
-                        value={registroUso.sucata}
-                        onChange={atualizarCampoRegistroUso}
-                      />
-                    </label>
-
-                    <label>
-                      Estoque
-                      <input
-                        type="number"
-                        name="estoque"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
-                        value={registroUso.estoque}
-                        onChange={atualizarCampoRegistroUso}
-                      />
-                    </label>
-
-                    <label>
-                      Perda
-                      <input
-                        type="number"
-                        name="perda"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
-                        value={registroUso.perda}
-                        onChange={atualizarCampoRegistroUso}
-                      />
-                    </label>
-                  </div>
-
-                  {Number(registroUso.estoque || 0) > 0 && (
-                    <label>
-                      Onde a sobra vai ficar?
-                      <select
-                        name="destinoEstoque"
-                        value={registroUso.destinoEstoque}
-                        onChange={atualizarCampoRegistroUso}
-                      >
-                        <option value={estoquePequeno}>Estoque Pequeno</option>
-                        <option value={estoquePrincipal}>Estoque Principal</option>
-                      </select>
-                    </label>
+                  {itensRegistroUso.length === 0 && (
+                    <p className="usage-empty compact-message">
+                      Selecione um material ao lado para informar os destinos.
+                    </p>
                   )}
 
-                  {Number(registroUso.produto || 0) > 0 && (
-                    <label>
-                      Produto final feito
-                      <select
-                        name="produtoFinalId"
-                        value={registroUso.produtoFinalId}
-                        onChange={atualizarCampoRegistroUso}
-                      >
-                        <option value="">Selecione o produto final</option>
-                        {produtosFinais.map((produtoFinal) => (
-                          <option value={produtoFinal.id} key={produtoFinal.id}>
-                            {produtoFinal.nome}
-                          </option>
+                  {itensRegistroUso.map(({ produto, valores, fechamento }) => (
+                    <article className="registro-material" key={produto.id}>
+                      <header>
+                        <div>
+                          <strong>{produto.nome}</strong>
+                          <span>
+                            Disponivel: {fechamento.disponivel}{" "}
+                            {obterUnidadeProduto(produto)}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="icon-button delete"
+                          onClick={() => alternarMaterialRegistroUso(produto)}
+                          title={`Tirar ${produto.nome} da aula`}
+                          aria-label={`Tirar ${produto.nome} da aula`}
+                        >
+                          <X size={16} />
+                        </button>
+                      </header>
+
+                      <label>
+                        Quantidade retirada
+                        <input
+                          type="number"
+                          min="0"
+                          max={fechamento.disponivel}
+                          step="0.01"
+                          placeholder="Ex: 10"
+                          value={valores.quantidadeRetirada}
+                          onChange={(event) =>
+                            atualizarItemRegistroUso(
+                              produto.id,
+                              "quantidadeRetirada",
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </label>
+
+                      <div className="usage-allocation-grid">
+                        {["produto", "sucata", "estoque", "perda"].map((campo) => (
+                          <label key={campo}>
+                            {campo === "produto"
+                              ? "Produto"
+                              : campo === "sucata"
+                                ? "Sucata"
+                                : campo === "estoque"
+                                  ? "Estoque"
+                                  : "Perda"}
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0"
+                              value={valores[campo]}
+                              onChange={(event) =>
+                                atualizarItemRegistroUso(
+                                  produto.id,
+                                  campo,
+                                  event.target.value,
+                                )
+                              }
+                            />
+                          </label>
                         ))}
-                      </select>
-                    </label>
-                  )}
+                      </div>
 
-                  {Number(registroUso.produto || 0) > 0 &&
-                    produtosFinais.length === 0 && (
-                      <p className="usage-empty compact-message">
-                        O professor precisa cadastrar produtos finais no
-                        Administrativo.
-                      </p>
-                    )}
+                      {Number(valores.estoque || 0) > 0 && (
+                        <label>
+                          Onde a sobra vai ficar?
+                          <select
+                            value={valores.destinoEstoque}
+                            onChange={(event) =>
+                              atualizarItemRegistroUso(
+                                produto.id,
+                                "destinoEstoque",
+                                event.target.value,
+                              )
+                            }
+                          >
+                            <option value={estoquePequeno}>Estoque Pequeno</option>
+                            <option value={estoquePrincipal}>Estoque Principal</option>
+                          </select>
+                        </label>
+                      )}
 
-                  <div
-                    className={
-                      registroUsoPrecisaJustificativa
-                        ? "calculation-card open"
-                        : "calculation-card"
-                    }
-                  >
-                    <span>Retirado: {quantidadeRegistroRetirada || 0}</span>
-                    <span>Informado: {totalRegistroJustificado || 0}</span>
-                    <strong>
-                      {registroUsoPrecisaJustificativa
-                        ? `Diferença: ${diferencaRegistroUso}`
-                        : "Conta fechada"}
-                    </strong>
-                  </div>
+                      {Number(valores.produto || 0) > 0 && (
+                        <label>
+                          Produto final feito
+                          <select
+                            value={valores.produtoFinalId}
+                            onChange={(event) =>
+                              atualizarItemRegistroUso(
+                                produto.id,
+                                "produtoFinalId",
+                                event.target.value,
+                              )
+                            }
+                          >
+                            <option value="">Selecione o produto final</option>
+                            {produtosFinais.map((produtoFinal) => (
+                              <option value={produtoFinal.id} key={produtoFinal.id}>
+                                {produtoFinal.nome}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+
+                      {Number(valores.produto || 0) > 0 &&
+                        produtosFinais.length === 0 && (
+                          <p className="usage-empty compact-message">
+                            Nenhum produto final cadastrado na aba Produtos.
+                          </p>
+                        )}
+
+                      <div
+                        className={
+                          fechamento.fechou
+                            ? "calculation-card"
+                            : "calculation-card open"
+                        }
+                      >
+                        <span>Retirado: {fechamento.retirada}</span>
+                        <span>Informado: {fechamento.informado}</span>
+                        <strong>
+                          {fechamento.fechou
+                            ? "Conta fechada"
+                            : `DiferenÃ§a: ${fechamento.diferenca}`}
+                        </strong>
+                      </div>
+                    </article>
+                  ))}
 
                   {registroUsoPrecisaJustificativa && !horarioJustificativaAtivo && (
                     <p className="usage-empty compact-message">
-                      A conta nao fechou. A justificativa sera solicitada a partir
-                      das {configuracoesSistema.horarioJustificativa}.
+                      {itensComDiferenca.length} material(is) com a conta aberta. A
+                      justificativa sera solicitada a partir das{" "}
+                      {configuracoesSistema.horarioJustificativa}.
                     </p>
                   )}
 
                   {registroUsoPrecisaJustificativa && horarioJustificativaAtivo && (
                     <label>
                       Justificativa para o professor
+                      <span className="field-hint">
+                        Vale para:{" "}
+                        {itensComDiferenca
+                          .map((item) => item.produto.nome)
+                          .join(", ")}
+                        .
+                      </span>
                       <textarea
                         name="justificativa"
                         maxLength="180"
-                        placeholder="Explique o que aconteceu com a diferença."
+                        placeholder="Explique o que aconteceu com a diferenÃ§a."
                         value={registroUso.justificativa}
                         onChange={atualizarCampoRegistroUso}
                       />
@@ -3161,6 +3255,31 @@ function App() {
                   )}
                 </section>
               </div>
+
+              {itensRegistroUso.length > 0 && (
+                <div className="registro-resumo">
+                  <span>
+                    <small>Materiais</small>
+                    <strong>{itensRegistroUso.length}</strong>
+                  </span>
+                  <span>
+                    <small>Total retirado</small>
+                    <strong>{Number(quantidadeRegistroRetirada.toFixed(2))}</strong>
+                  </span>
+                  <span>
+                    <small>Total informado</small>
+                    <strong>{Number(totalRegistroJustificado.toFixed(2))}</strong>
+                  </span>
+                  <span className={registroUsoPrecisaJustificativa ? "aberta" : "ok"}>
+                    <small>Situacao</small>
+                    <strong>
+                      {registroUsoPrecisaJustificativa
+                        ? `${itensComDiferenca.length} em aberto`
+                        : "Tudo fechado"}
+                    </strong>
+                  </span>
+                </div>
+              )}
 
               {erroRegistroUso && <p className="form-error">{erroRegistroUso}</p>}
 
