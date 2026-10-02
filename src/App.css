@@ -905,3 +905,8 @@ input:-webkit-autofill:focus {
 .registro-resumo strong { font-size: 14px; }
 .registro-resumo .aberta strong { color: var(--amber); }
 .registro-resumo .ok strong { color: var(--green); }
+
+/* Quantidade com a unidade ao lado, no registro de uso. */
+.quantidade-com-unidade { display: flex; gap: 8px; align-items: stretch; }
+.quantidade-com-unidade input { flex: 1; min-width: 0; }
+.quantidade-com-unidade select { width: 88px; flex-shrink: 0; }

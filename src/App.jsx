@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   ArrowUp,
@@ -156,21 +156,62 @@ const itemRegistroInicial = {
   perda: "",
   produtoFinalId: "",
   destinoEstoque: estoquePequeno,
+  unidadeInformada: "",
 };
 
-// Soma do que foi declarado e quanto falta para fechar, por material.
-function calcularFechamentoItem(item, quantidadeDisponivel) {
-  const retirada = Number(item.quantidadeRetirada || 0);
+// O saldo do produto e guardado na unidade do cadastro, mas o aluno pode
+// anotar em uma unidade menor: 250 g em vez de 0,25 kg.
+const EQUIVALENCIAS = {
+  kg: [
+    { id: "kg", titulo: "kg", fator: 1 },
+    { id: "g", titulo: "g", fator: 0.001 },
+  ],
+  L: [
+    { id: "L", titulo: "L", fator: 1 },
+    { id: "mL", titulo: "mL", fator: 0.001 },
+  ],
+  g: [
+    { id: "g", titulo: "g", fator: 1 },
+    { id: "kg", titulo: "kg", fator: 1000 },
+  ],
+  un: [{ id: "un", titulo: "un", fator: 1 }],
+};
+
+function unidadesDisponiveis(unidadeBase) {
+  return EQUIVALENCIAS[unidadeBase] || [{ id: unidadeBase, titulo: unidadeBase, fator: 1 }];
+}
+
+// Converte o que foi digitado para a unidade do cadastro, que e como o
+// saldo e gravado.
+function converterParaUnidadeBase(valor, unidadeInformada, unidadeBase) {
+  const numero = Number(valor || 0);
+  if (!numero) return 0;
+
+  const equivalencia = unidadesDisponiveis(unidadeBase).find(
+    (unidade) => unidade.id === unidadeInformada,
+  );
+
+  return Number((numero * (equivalencia?.fator ?? 1)).toFixed(4));
+}
+
+// Soma do que foi declarado e quanto falta para fechar, por material. Tudo
+// e convertido para a unidade do cadastro antes de comparar com o saldo.
+function calcularFechamentoItem(item, quantidadeDisponivel, unidadeBase) {
+  const unidade = item.unidadeInformada || unidadeBase;
+  const paraBase = (valor) => converterParaUnidadeBase(valor, unidade, unidadeBase);
+
+  const retirada = paraBase(item.quantidadeRetirada);
   const informado =
-    Number(item.produto || 0) +
-    Number(item.sucata || 0) +
-    Number(item.estoque || 0) +
-    Number(item.perda || 0);
+    paraBase(item.produto) +
+    paraBase(item.sucata) +
+    paraBase(item.estoque) +
+    paraBase(item.perda);
   const diferenca = Number((retirada - informado).toFixed(2));
 
   return {
-    retirada,
-    informado,
+    unidade,
+    retirada: Number(retirada.toFixed(2)),
+    informado: Number(informado.toFixed(2)),
     diferenca,
     disponivel: Number(quantidadeDisponivel || 0),
     fechou: Math.abs(diferenca) <= 0.009,
@@ -475,7 +516,11 @@ function App() {
       return {
         produto,
         valores,
-        fechamento: calcularFechamentoItem(valores, produto.quantidadeKg),
+        fechamento: calcularFechamentoItem(
+          valores,
+          produto.quantidadeKg,
+          obterUnidadeProduto(produto),
+        ),
       };
     })
     .filter(Boolean);
@@ -1280,7 +1325,12 @@ function App() {
 
     try {
       for (const { produto, valores, fechamento } of itensRegistroUso) {
-        const quantidadeEstoque = Number(valores.estoque || 0);
+        // Tudo que vai para o banco usa a unidade do cadastro.
+        const unidadeBase = obterUnidadeProduto(produto);
+        const emBase = (valor) =>
+          converterParaUnidadeBase(valor, fechamento.unidade, unidadeBase);
+
+        const quantidadeEstoque = emBase(valores.estoque);
         const sobraVoltaParaPrincipal =
           valores.destinoEstoque === estoquePrincipal;
         const quantidadeQueSaiDoBalde = sobraVoltaParaPrincipal
@@ -1308,13 +1358,13 @@ function App() {
 
         const resumoFechamento = {
           retirado: fechamento.retirada,
-          produto: Number(valores.produto || 0),
-          sucata: Number(valores.sucata || 0),
+          produto: emBase(valores.produto),
+          sucata: emBase(valores.sucata),
           estoque: quantidadeEstoque,
           destinoEstoque: sobraVoltaParaPrincipal
             ? "Estoque Principal"
             : "Estoque Pequeno",
-          perda: Number(valores.perda || 0),
+          perda: emBase(valores.perda),
           diferenca: fechamento.diferenca,
         };
 
@@ -3114,21 +3164,50 @@ function App() {
 
                       <label>
                         Quantidade retirada
-                        <input
-                          type="number"
-                          min="0"
-                          max={fechamento.disponivel}
-                          step="0.01"
-                          placeholder="Ex: 10"
-                          value={valores.quantidadeRetirada}
-                          onChange={(event) =>
-                            atualizarItemRegistroUso(
-                              produto.id,
-                              "quantidadeRetirada",
-                              event.target.value,
-                            )
-                          }
-                        />
+                        <span className="quantidade-com-unidade">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="Ex: 10"
+                            value={valores.quantidadeRetirada}
+                            onChange={(event) =>
+                              atualizarItemRegistroUso(
+                                produto.id,
+                                "quantidadeRetirada",
+                                event.target.value,
+                              )
+                            }
+                          />
+
+                          <select
+                            value={fechamento.unidade}
+                            aria-label={`Unidade usada em ${produto.nome}`}
+                            onChange={(event) =>
+                              atualizarItemRegistroUso(
+                                produto.id,
+                                "unidadeInformada",
+                                event.target.value,
+                              )
+                            }
+                          >
+                            {unidadesDisponiveis(obterUnidadeProduto(produto)).map(
+                              (unidade) => (
+                                <option value={unidade.id} key={unidade.id}>
+                                  {unidade.titulo}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </span>
+
+                        {fechamento.unidade !== obterUnidadeProduto(produto) && (
+                          <span className="field-hint">
+                            Equivale a {fechamento.retirada}{" "}
+                            {obterUnidadeProduto(produto)}. A unidade vale para
+                            todos os campos deste material.
+                          </span>
+                        )}
                       </label>
 
                       <div className="usage-allocation-grid">
@@ -3220,7 +3299,7 @@ function App() {
                         <strong>
                           {fechamento.fechou
                             ? "Conta fechada"
-                            : `DiferenÃ§a: ${fechamento.diferenca}`}
+                            : `Diferença: ${fechamento.diferenca}`}
                         </strong>
                       </div>
                     </article>
@@ -3247,7 +3326,7 @@ function App() {
                       <textarea
                         name="justificativa"
                         maxLength="180"
-                        placeholder="Explique o que aconteceu com a diferenÃ§a."
+                        placeholder="Explique o que aconteceu com a diferença."
                         value={registroUso.justificativa}
                         onChange={atualizarCampoRegistroUso}
                       />
@@ -4017,7 +4096,7 @@ function App() {
                   type="text"
                   name="nome"
                   maxLength="45"
-                  placeholder="Ex: PolÃ­mero A"
+                  placeholder="Ex: Polímero A"
                   value={formulario.nome}
                   onChange={atualizarCampo}
                 />
