@@ -56,6 +56,7 @@ import { criarLogAuditoria } from "./services/auditService";
 import { useAuth } from "./contexts/useAuth";
 import AcessoRevogadoModal from "./components/AcessoRevogadoModal";
 import AcoesProduto from "./components/AcoesProduto";
+import CampoQuantidade from "./components/CampoQuantidade";
 import CamposPersonalizados, { ListaCamposPersonalizados } from "./components/CamposPersonalizados";
 import ModalGerenciarCampos from "./components/GerenciadorCampos";
 import ModalCampo from "./components/ModalCampo";
@@ -156,8 +157,10 @@ const itemRegistroInicial = {
   perda: "",
   produtoFinalId: "",
   destinoEstoque: estoquePequeno,
-  unidadeInformada: "",
+  // Unidade por campo: vazio significa a unidade do cadastro do produto.
+  unidades: {},
 };
+
 
 // O saldo do produto e guardado na unidade do cadastro, mas o aluno pode
 // anotar em uma unidade menor: 250 g em vez de 0,25 kg.
@@ -197,19 +200,25 @@ function converterParaUnidadeBase(valor, unidadeInformada, unidadeBase) {
 // Soma do que foi declarado e quanto falta para fechar, por material. Tudo
 // e convertido para a unidade do cadastro antes de comparar com o saldo.
 function calcularFechamentoItem(item, quantidadeDisponivel, unidadeBase) {
-  const unidade = item.unidadeInformada || unidadeBase;
-  const paraBase = (valor) => converterParaUnidadeBase(valor, unidade, unidadeBase);
+  const unidadeDoCampo = (campo) => item.unidades?.[campo] || unidadeBase;
+  const paraBase = (campo) =>
+    converterParaUnidadeBase(item[campo], unidadeDoCampo(campo), unidadeBase);
 
-  const retirada = paraBase(item.quantidadeRetirada);
+  const retirada = paraBase("quantidadeRetirada");
+  const emBase = {
+    quantidadeRetirada: retirada,
+    produto: paraBase("produto"),
+    sucata: paraBase("sucata"),
+    estoque: paraBase("estoque"),
+    perda: paraBase("perda"),
+  };
   const informado =
-    paraBase(item.produto) +
-    paraBase(item.sucata) +
-    paraBase(item.estoque) +
-    paraBase(item.perda);
+    emBase.produto + emBase.sucata + emBase.estoque + emBase.perda;
   const diferenca = Number((retirada - informado).toFixed(2));
 
   return {
-    unidade,
+    unidadeDoCampo,
+    emBase,
     retirada: Number(retirada.toFixed(2)),
     informado: Number(informado.toFixed(2)),
     diferenca,
@@ -1224,6 +1233,23 @@ function App() {
     }));
   }
 
+  function atualizarUnidadeItemRegistroUso(produtoId, campo, unidade) {
+    setRegistroUso((atual) => {
+      const item = atual.itens[produtoId];
+
+      return {
+        ...atual,
+        itens: {
+          ...atual.itens,
+          [produtoId]: {
+            ...item,
+            unidades: { ...(item.unidades || {}), [campo]: unidade },
+          },
+        },
+      };
+    });
+  }
+
 
 
 
@@ -1364,7 +1390,7 @@ function App() {
           destinoEstoque: sobraVoltaParaPrincipal
             ? "Estoque Principal"
             : "Estoque Pequeno",
-          perda: emBase(valores.perda),
+          perda: emBase.perda,
           diferenca: fechamento.diferenca,
         };
 
@@ -3162,79 +3188,56 @@ function App() {
                         </button>
                       </header>
 
-                      <label>
-                        Quantidade retirada
-                        <span className="quantidade-com-unidade">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="Ex: 10"
-                            value={valores.quantidadeRetirada}
-                            onChange={(event) =>
-                              atualizarItemRegistroUso(
+                      <CampoQuantidade
+                        rotulo="Quantidade retirada"
+                        placeholder="Ex: 10"
+                        valor={valores.quantidadeRetirada}
+                        unidade={fechamento.unidadeDoCampo("quantidadeRetirada")}
+                        unidades={unidadesDisponiveis(obterUnidadeProduto(produto))}
+                        unidadeBase={obterUnidadeProduto(produto)}
+                        equivalente={fechamento.emBase.quantidadeRetirada}
+                        aoMudarValor={(valor) =>
+                          atualizarItemRegistroUso(
+                            produto.id,
+                            "quantidadeRetirada",
+                            valor,
+                          )
+                        }
+                        aoMudarUnidade={(unidade) =>
+                          atualizarUnidadeItemRegistroUso(
+                            produto.id,
+                            "quantidadeRetirada",
+                            unidade,
+                          )
+                        }
+                      />
+
+                      <div className="usage-allocation-grid">
+                        {[
+                          ["produto", "Produto"],
+                          ["sucata", "Sucata"],
+                          ["estoque", "Estoque"],
+                          ["perda", "Perda"],
+                        ].map(([campo, rotulo]) => (
+                          <CampoQuantidade
+                            key={campo}
+                            rotulo={rotulo}
+                            valor={valores[campo]}
+                            unidade={fechamento.unidadeDoCampo(campo)}
+                            unidades={unidadesDisponiveis(obterUnidadeProduto(produto))}
+                            unidadeBase={obterUnidadeProduto(produto)}
+                            equivalente={fechamento.emBase[campo]}
+                            aoMudarValor={(valor) =>
+                              atualizarItemRegistroUso(produto.id, campo, valor)
+                            }
+                            aoMudarUnidade={(unidade) =>
+                              atualizarUnidadeItemRegistroUso(
                                 produto.id,
-                                "quantidadeRetirada",
-                                event.target.value,
+                                campo,
+                                unidade,
                               )
                             }
                           />
-
-                          <select
-                            value={fechamento.unidade}
-                            aria-label={`Unidade usada em ${produto.nome}`}
-                            onChange={(event) =>
-                              atualizarItemRegistroUso(
-                                produto.id,
-                                "unidadeInformada",
-                                event.target.value,
-                              )
-                            }
-                          >
-                            {unidadesDisponiveis(obterUnidadeProduto(produto)).map(
-                              (unidade) => (
-                                <option value={unidade.id} key={unidade.id}>
-                                  {unidade.titulo}
-                                </option>
-                              ),
-                            )}
-                          </select>
-                        </span>
-
-                        {fechamento.unidade !== obterUnidadeProduto(produto) && (
-                          <span className="field-hint">
-                            Equivale a {fechamento.retirada}{" "}
-                            {obterUnidadeProduto(produto)}. A unidade vale para
-                            todos os campos deste material.
-                          </span>
-                        )}
-                      </label>
-
-                      <div className="usage-allocation-grid">
-                        {["produto", "sucata", "estoque", "perda"].map((campo) => (
-                          <label key={campo}>
-                            {campo === "produto"
-                              ? "Produto"
-                              : campo === "sucata"
-                                ? "Sucata"
-                                : campo === "estoque"
-                                  ? "Estoque"
-                                  : "Perda"}
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              placeholder="0"
-                              value={valores[campo]}
-                              onChange={(event) =>
-                                atualizarItemRegistroUso(
-                                  produto.id,
-                                  campo,
-                                  event.target.value,
-                                )
-                              }
-                            />
-                          </label>
                         ))}
                       </div>
 
